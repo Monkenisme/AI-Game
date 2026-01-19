@@ -272,15 +272,15 @@
         class Boss {
             constructor(waveNum) {
                 this.isBoss = true;
-                this.hp = 500 + (waveNum * 200);
+                this.hp = 1000 + (waveNum * 200);
                 this.maxHp = this.hp;
-                this.size = 100;
+                this.size = 200;
                 this.x = width / 2;
                 this.y = -150;
                 this.targetY = 150;
                 this.fireTimer = 0;
-                this.fireInterval = Math.max(20, 50 - waveNum);
-                this.angle = 0;
+                this.fireInterval = Math.max(5, 10 - waveNum);
+                this.angle = 5;
             }
 
             update() {
@@ -442,7 +442,7 @@
             if (isBossWave) {
                 if (!hasBoss && enemies.length === 0) {
                     enemies.push(new Boss(wave));
-                    showNotification("BOSS WARNING");
+                    showNotification("NIGGER INCOMING");
                 }
             } else {
                 const maxEnemies = Math.min(3 + wave, 12);
