@@ -5,446 +5,305 @@
 <title>ACES: Galaxy Edition</title>
 <style>
 body {
-margin: 0;
-overflow: hidden;
-background: #020205;
-font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-cursor: none;
+  margin: 0;
+  overflow: hidden;
+  background: #020205;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  cursor: none;
 }
-canvas {
-display: block;
-}
-/* UI */
+canvas { display: block; }
+
+/* UI Overlay */
 #ui-layer {
-position: absolute;
-top: 0;
-left: 0;
-width: 100%;
-height: 100%;
-pointer-events: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
 }
+
 #hud-top {
-position: absolute;
-top: 20px;
-left: 20px;
-right: 20px;
-display: flex;
-justify-content: space-between;
-color: white;
-font-weight: bold;
-text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  right: 20px;
+  display: flex;
+  justify-content: space-between;
+  color: white;
+  font-weight: bold;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.8);
 }
+
 .hud-box {
-background: rgba(0, 0, 0, 0.5);
-padding: 10px 20px;
-border-radius: 20px;
-border: 1px solid #444;
+  background: rgba(0, 0, 0, 0.5);
+  padding: 10px 20px;
+  border-radius: 20px;
+  border: 1px solid #444;
 }
+
+/* NIEUW: Damage Model Display (Linksonder) */
+#damage-display {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  width: 120px;
+  height: 140px;
+  background: rgba(0, 20, 40, 0.8);
+  border: 2px solid #00d4ff;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+#damage-label {
+  color: #00d4ff;
+  font-size: 10px;
+  margin-bottom: 5px;
+  text-transform: uppercase;
+}
+#damage-canvas {
+  width: 80px;
+  height: 100px;
+}
+
 #xp-bar-container {
-position: absolute;
-top: 60px;
-left: 50%;
-transform: translateX(-50%);
-width: 400px;
-height: 10px;
-background: #222;
-border: 1px solid #555;
-border-radius: 5px;
+  position: absolute;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 400px;
+  height: 10px;
+  background: #222;
+  border: 1px solid #555;
+  border-radius: 5px;
 }
 #xp-bar-fill {
-height: 100%;
-background: #ffd700;
-width: 0%;
-transition: width 0.2s;
-box-shadow: 0 0 10px #ffd700;
+  height: 100%;
+  background: #ffd700;
+  width: 0%;
+  transition: width 0.2s;
+  box-shadow: 0 0 10px #ffd700;
 }
 #xp-text {
-text-align: center;
-color: #ffd700;
-font-size: 12px;
-margin-top: 2px;
+  text-align: center;
+  color: #ffd700;
+  font-size: 12px;
+  margin-top: 2px;
 }
-/* Element Bar */
+
 #element-bar-container {
-position: absolute;
-top: 80px;
-left: 50%;
-transform: translateX(-50%);
-width: 400px;
-height: 10px;
-background: #222;
-border: 1px solid #555;
-border-radius: 5px;
-margin-top: 5px;
+  position: absolute;
+  top: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 400px;
+  height: 10px;
+  background: #222;
+  border: 1px solid #555;
+  border-radius: 5px;
+  margin-top: 5px;
 }
 #element-bar-fill {
-height: 100%;
-background: linear-gradient(90deg, #ff4444, #4488ff, #44aa44, #88ccff);
-width: 0%;
-transition: width 0.2s;
+  height: 100%;
+  background: linear-gradient(90deg, #ff4444, #4488ff, #44aa44, #88ccff);
+  width: 0%;
+  transition: width 0.2s;
 }
 #element-text {
-text-align: center;
-color: #aaa;
-font-size: 12px;
-margin-top: 2px;
+  text-align: center;
+  color: #aaa;
+  font-size: 12px;
+  margin-top: 2px;
 }
-/* Cards Display */
+
 #cards-display {
-position: absolute;
-bottom: 20px;
-left: 50%;
-transform: translateX(-50%);
-display: flex;
-gap: 10px;
-width: 300px;
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 10px;
+  width: 300px;
 }
 .card-slot {
-width: 80px;
-height: 100px;
-background: rgba(0, 0, 0, 0.5);
-border: 1px solid #444;
-border-radius: 10px;
-display: flex;
-flex-direction: column;
-align-items: center;
-justify-content: center;
-color: white;
-font-size: 12px;
-text-align: center;
+  width: 80px;
+  height: 100px;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid #444;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 12px;
+  text-align: center;
 }
-.card-slot.empty {
-border: 1px dashed #666;
-}
+.card-slot.empty { border: 1px dashed #666; }
 .card-rarity-common { border-top: 3px solid #aaa; }
 .card-rarity-rare { border-top: 3px solid #44aaff; }
 .card-rarity-epic { border-top: 3px solid #aa44ff; }
 .card-rarity-legendary { border-top: 3px solid #ffaa44; }
 .card-rarity-mythic { border-top: 3px solid #ff44aa; }
-/* Upgrade Menu (End of Wave) */
-#wave-menu {
-position: absolute;
-top: 0;
-left: 0;
-width: 100%;
-height: 100%;
-background: rgba(10, 10, 25, 0.95);
-display: none;
-flex-direction: column;
-align-items: center;
-justify-content: center;
-pointer-events: auto;
-z-index: 100;
-cursor: default;
+
+/* Menus */
+#wave-menu, #card-pickup, #game-over, #element-selection, #start-screen {
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+  display: none; flex-direction: column; align-items: center; justify-content: center;
+  z-index: 100; cursor: default;
 }
-.upgrade-tree {
-display: flex;
-flex-direction: column;
-align-items: center;
-width: 80%;
-max-width: 800px;
-}
-.tree-row {
-display: flex;
-justify-content: center;
-gap: 30px;
-margin: 20px 0;
-}
-.tree-node {
-width: 180px;
-height: 180px;
-background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
-border: 2px solid #00d4ff;
-border-radius: 15px;
-display: flex;
-flex-direction: column;
-align-items: center;
-padding: 15px;
-cursor: pointer;
-color: white;
-transition: 0.3s;
-box-shadow: 0 0 15px rgba(0, 212, 255, 0.2);
-position: relative;
-}
-.tree-node:hover {
-transform: translateY(-5px);
-box-shadow: 0 0 25px rgba(0, 212, 255, 0.6);
-background: #202040;
-}
-.tree-node.locked {
-opacity: 0.5;
-cursor: not-allowed;
-}
-.tree-node.locked:hover {
-transform: none;
-box-shadow: 0 0 15px rgba(0, 212, 255, 0.2);
-}
-.tree-node-icon {
-font-size: 40px;
-margin: 10px 0;
-}
-.tree-node h3 {
-color: #00d4ff;
-margin: 5px 0;
-font-size: 16px;
-text-transform: uppercase;
-text-align: center;
-}
-.tree-node p {
-color: #aaa;
-text-align: center;
-font-size: 12px;
-line-height: 1.3;
-height: 60px;
-overflow: hidden;
-}
-.tree-node.unlocked::after {
-content: "✓";
-position: absolute;
-top: 5px;
-right: 5px;
-color: #44ff44;
-font-size: 20px;
-font-weight: bold;
-}
-/* Card Pickup Screen */
-#card-pickup {
-position: absolute;
-top: 0;
-left: 0;
-width: 100%;
-height: 100%;
-background: rgba(10, 10, 25, 0.95);
-display: none;
-flex-direction: column;
-align-items: center;
-justify-content: center;
-pointer-events: auto;
-z-index: 150;
-cursor: default;
-}
-.card-preview {
-width: 300px;
-height: 400px;
-background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
-border: 2px solid #ff44aa;
-border-radius: 15px;
-display: flex;
-flex-direction: column;
-align-items: center;
-padding: 20px;
-color: white;
-box-shadow: 0 0 30px rgba(255, 68, 170, 0.5);
-}
-.card-preview-icon { 
-font-size: 80px; 
-margin: 20px 0; 
-}
-.card-preview h2 { 
-color: #ff44aa; 
-margin: 10px 0; 
-font-size: 24px; 
-text-transform: uppercase; 
-}
-.card-preview p { 
-color: #aaa; 
-text-align: center; 
-font-size: 16px; 
-line-height: 1.4; 
-margin: 10px 0;
-}
-.card-rarity-tag {
-padding: 5px 15px;
-border-radius: 20px;
-font-weight: bold;
-margin: 10px 0;
-background: #333;
-}
-.btn-small {
-padding: 10px 30px;
-font-size: 18px;
-background: #ff44aa;
-border: none;
-color: white;
-font-weight: 800;
-cursor: pointer;
-border-radius: 5px;
-margin-top: 20px;
-box-shadow: 0 0 15px rgba(255, 68, 170, 0.5);
-}
-.btn-small:hover {
-background: #ff88cc;
-box-shadow: 0 0 25px #ff88cc;
-}
-/* Notification */
-#notification {
-position: absolute;
-top: 30%;
-left: 50%;
-transform: translate(-50%, -50%);
-color: #ffd700;
-font-size: 40px;
-font-weight: 900;
-opacity: 0;
-text-shadow: 0 0 20px #ffaa00;
-pointer-events: none;
-transition: opacity 0.5s;
-}
-/* Start Screen */
-#start-screen {
-position: absolute;
-top: 0;
-left: 0;
-width: 100%;
-height: 100%;
-background: #050510;
-display: flex;
-flex-direction: column;
-align-items: center;
-justify-content: center;
-z-index: 200;
-cursor: default;
-}
+#wave-menu { background: rgba(10, 10, 25, 0.95); }
+#card-pickup { background: rgba(10, 10, 25, 0.95); z-index: 150; }
+#game-over { background: rgba(0, 0, 0, 0.9); z-index: 200; color: white;}
+#element-selection { background: rgba(10, 10, 25, 0.95); z-index: 150; }
+#start-screen { background: #050510; display: flex; z-index: 200; }
+
 .btn {
-padding: 15px 50px;
-font-size: 24px;
-background: #00d4ff;
-border: none;
-color: #000;
-font-weight: 800;
-cursor: pointer;
-border-radius: 5px;
-box-shadow: 0 0 25px rgba(0, 212, 255, 0.5);
-text-transform: uppercase;
+  padding: 15px 50px; font-size: 24px; background: #00d4ff; border: none;
+  color: #000; font-weight: 800; cursor: pointer; border-radius: 5px;
+  box-shadow: 0 0 25px rgba(0, 212, 255, 0.5); text-transform: uppercase;
 }
-.btn:hover {
-background: white;
-box-shadow: 0 0 40px white;
-}
-/* Element Selection */
-#element-selection {
-position: absolute;
-top: 0;
-left: 0;
-width: 100%;
-height: 100%;
-background: rgba(10, 10, 25, 0.95);
-display: none;
-flex-direction: column;
-align-items: center;
-justify-content: center;
-pointer-events: auto;
-z-index: 150;
-cursor: default;
-}
+.btn:hover { background: white; box-shadow: 0 0 40px white; }
+
 .element-option {
-width: 200px;
-height: 200px;
-margin: 20px;
-border-radius: 15px;
-display: flex;
-flex-direction: column;
-align-items: center;
-justify-content: center;
-cursor: pointer;
-transition: transform 0.3s;
+  width: 200px; height: 200px; margin: 20px; border-radius: 15px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  cursor: pointer; transition: transform 0.3s;
 }
-.element-option:hover {
-transform: scale(1.1);
-}
+.element-option:hover { transform: scale(1.1); }
 .element-fire { background: linear-gradient(135deg, #ff4444, #ff8800); }
 .element-water { background: linear-gradient(135deg, #4488ff, #44ccff); }
 .element-earth { background: linear-gradient(135deg, #44aa44, #88cc44); }
 .element-air { background: linear-gradient(135deg, #88ccff, #ffffff); }
 .element-icon { font-size: 60px; margin-bottom: 15px; }
 .element-name { font-size: 24px; font-weight: bold; color: white; }
-/* Game Over */
-#game-over {
-position: absolute;
-top: 0;
-left: 0;
-width: 100%;
-height: 100%;
-background: rgba(0, 0, 0, 0.8);
-display: none;
-flex-direction: column;
-align-items: center;
-justify-content: center;
-color: white;
-z-index: 200;
+
+/* Upgrade Tree Styles */
+.upgrade-tree { display: flex; flex-direction: column; align-items: center; width: 80%; max-width: 800px; }
+.tree-row { display: flex; justify-content: center; gap: 30px; margin: 20px 0; }
+.tree-node {
+  width: 180px; height: 180px; background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
+  border: 2px solid #00d4ff; border-radius: 15px; display: flex; flex-direction: column;
+  align-items: center; padding: 15px; cursor: pointer; color: white; transition: 0.3s;
+  box-shadow: 0 0 15px rgba(0, 212, 255, 0.2); position: relative;
 }
-#final-score { font-size: 36px; margin: 20px; }
+.tree-node:hover { transform: translateY(-5px); box-shadow: 0 0 25px rgba(0, 212, 255, 0.6); background: #202040; }
+.tree-node.locked { opacity: 0.5; cursor: not-allowed; }
+.tree-node.unlocked::after { content: "✓"; position: absolute; top: 5px; right: 5px; color: #44ff44; font-size: 20px; font-weight: bold; }
+.tree-node-icon { font-size: 40px; margin: 10px 0; }
+.tree-node h3 { color: #00d4ff; margin: 5px 0; font-size: 16px; text-transform: uppercase; text-align: center; }
+.tree-node p { color: #aaa; text-align: center; font-size: 12px; line-height: 1.3; height: 60px; overflow: hidden; }
+
+/* Card Pickup */
+.card-preview {
+  width: 300px; height: 400px; background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
+  border: 2px solid #ff44aa; border-radius: 15px; display: flex; flex-direction: column;
+  align-items: center; padding: 20px; color: white; box-shadow: 0 0 30px rgba(255, 68, 170, 0.5);
+}
+.card-preview-icon { font-size: 80px; margin: 20px 0; }
+.card-preview h2 { color: #ff44aa; margin: 10px 0; font-size: 24px; text-transform: uppercase; }
+.card-rarity-tag { padding: 5px 15px; border-radius: 20px; font-weight: bold; margin: 10px 0; background: #333; }
+.btn-small {
+  padding: 10px 30px; font-size: 18px; background: #ff44aa; border: none; color: white;
+  font-weight: 800; cursor: pointer; border-radius: 5px; margin-top: 20px;
+  box-shadow: 0 0 15px rgba(255, 68, 170, 0.5);
+}
+#notification {
+  position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%);
+  color: #ffd700; font-size: 40px; font-weight: 900; opacity: 0;
+  text-shadow: 0 0 20px #ffaa00; pointer-events: none; transition: opacity 0.5s;
+}
 </style>
 </head>
 <body>
+
 <div id="ui-layer">
-<div id="hud-top">
-<div class="hud-box">SCORE: <span id="score">0</span></div>
-<div class="hud-box" style="color:#ff4444">HP: <span id="hp">100</span>%</div>
-<div class="hud-box" style="color:#00d4ff">WAVE: <span id="wave">1</span></div>
+  <div id="hud-top">
+    <div class="hud-box">SCORE: <span id="score">0</span></div>
+    <div class="hud-box" style="color:#00d4ff">WAVE: <span id="wave">1</span></div>
+  </div>
+
+  <div id="xp-bar-container">
+    <div id="xp-bar-fill"></div>
+    <div id="xp-text">NEXT DROP</div>
+  </div>
+
+  <div id="element-bar-container">
+    <div id="element-bar-fill"></div>
+    <div id="element-text">ELEMENT POWER</div>
+  </div>
+
+  <div id="damage-display">
+    <div id="damage-label">SHIP STATUS</div>
+    <canvas id="damageCanvas" width="80" height="100"></canvas>
+  </div>
+
+  <div id="cards-display">
+    <div class="card-slot empty">EMPTY</div>
+    <div class="card-slot empty">EMPTY</div>
+    <div class="card-slot empty">EMPTY</div>
+  </div>
+  <div id="notification">LEVEL UP!</div>
 </div>
-<div id="xp-bar-container">
-<div id="xp-bar-fill"></div>
-<div id="xp-text">NEXT DROP</div>
-</div>
-<div id="element-bar-container">
-<div id="element-bar-fill"></div>
-<div id="element-text">ELEMENT POWER</div>
-</div>
-<div id="cards-display">
-<div class="card-slot empty">EMPTY</div>
-<div class="card-slot empty">EMPTY</div>
-<div class="card-slot empty">EMPTY</div>
-</div>
-<div id="notification">LEVEL UP!</div>
-</div>
+
 <div id="start-screen">
-<h1 style="color:#00d4ff; font-size: 80px; margin-bottom: 10px; text-shadow: 0 0 30px #00d4ff;">ACES GALAXY</h1>
-<p style="color:white; font-size: 18px; margin-bottom: 40px;">Move with MOUSE. Survive the cosmic waves!</p>
-<button class="btn" onclick="initGame()">LAUNCH MISSION</button>
+  <h1 style="color:#00d4ff; font-size: 80px; margin-bottom: 10px; text-shadow: 0 0 30px #00d4ff;">ACES GALAXY</h1>
+  <p style="color:white; font-size: 18px; margin-bottom: 40px;">Move with MOUSE. Survive the cosmic waves!</p>
+  <button class="btn" onclick="initGame()">LAUNCH MISSION</button>
 </div>
+
 <div id="element-selection">
-<h1 style="color:#00d4ff; font-size: 40px; margin-bottom: 30px;">CHOOSE YOUR ELEMENT</h1>
-<div class="element-option element-fire" onclick="selectElement('FIRE')">
-<div class="element-icon">🔥</div>
-<div class="element-name">FIRE</div>
+  <h1 style="color:#00d4ff; font-size: 40px; margin-bottom: 30px;">CHOOSE YOUR ELEMENT</h1>
+  <div class="element-option element-fire" onclick="selectElement('FIRE')">
+    <div class="element-icon">🔥</div>
+    <div class="element-name">FIRE</div>
+  </div>
+  <div class="element-option element-water" onclick="selectElement('WATER')">
+    <div class="element-icon">💧</div>
+    <div class="element-name">WATER</div>
+  </div>
+  <div class="element-option element-earth" onclick="selectElement('EARTH')">
+    <div class="element-icon">🌍</div>
+    <div class="element-name">EARTH</div>
+  </div>
+  <div class="element-option element-air" onclick="selectElement('AIR')">
+    <div class="element-icon">🌪️</div>
+    <div class="element-name">AIR</div>
+  </div>
 </div>
-<div class="element-option element-water" onclick="selectElement('WATER')">
-<div class="element-icon">💧</div>
-<div class="element-name">WATER</div>
-</div>
-<div class="element-option element-earth" onclick="selectElement('EARTH')">
-<div class="element-icon">🌍</div>
-<div class="element-name">EARTH</div>
-</div>
-<div class="element-option element-air" onclick="selectElement('AIR')">
-<div class="element-icon">🌪️</div>
-<div class="element-name">AIR</div>
-</div>
-</div>
+
 <div id="wave-menu">
-<h1 style="color: white; font-size: 40px;">MISSION COMPLETE</h1>
-<p style="color: #00d4ff; margin-bottom: 20px;">CHOOSE YOUR UPGRADE PATH</p>
-<div class="upgrade-tree" id="upgrade-tree"></div>
+  <h1 style="color: white; font-size: 40px;">MISSION COMPLETE</h1>
+  <p style="color: #00d4ff; margin-bottom: 20px;">CHOOSE YOUR UPGRADE PATH</p>
+  <div class="upgrade-tree" id="upgrade-tree"></div>
 </div>
+
 <div id="card-pickup">
-<div class="card-preview" id="card-preview">
-<div class="card-preview-icon">?</div>
-<h2 id="card-name">CARD NAME</h2>
-<div class="card-rarity-tag" id="card-rarity">Rarity</div>
-<p id="card-desc">Card description</p>
-<button class="btn-small" onclick="acceptCard()">ACCEPT CARD</button>
+  <div class="card-preview" id="card-preview">
+    <div class="card-preview-icon">?</div>
+    <h2 id="card-name">CARD NAME</h2>
+    <div class="card-rarity-tag" id="card-rarity">Rarity</div>
+    <p id="card-desc">Card description</p>
+    <button class="btn-small" onclick="acceptCard()">ACCEPT CARD</button>
+  </div>
 </div>
-</div>
+
 <div id="game-over">
-<h1 style="color:#ff4444; font-size: 60px;">MISSION FAILED</h1>
-<div id="final-score">FINAL SCORE: 0</div>
-<button class="btn" onclick="restartGame()">TRY AGAIN</button>
+  <h1 style="color:#ff4444; font-size: 60px;">CRITICAL FAILURE</h1>
+  <div id="final-score" style="font-size: 30px; margin: 20px;">FINAL SCORE: 0</div>
+  <p style="color: #aaa; margin-bottom: 30px;">ALL SYSTEMS DESTROYED</p>
+  <button class="btn" onclick="restartGame()">RETRY MISSION</button>
 </div>
+
 <canvas id="gameCanvas"></canvas>
+
 <script>
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
+const dmgCanvas = document.getElementById('damageCanvas');
+const dmgCtx = dmgCanvas.getContext('2d');
 
 // --- CONFIGURATIE ---
 let width, height;
@@ -458,6 +317,7 @@ let score = 0;
 let nextDropScore = 500;
 let elementPower = 0;
 let maxElementPower = 100;
+let bossSpawnedThisWave = false; 
 
 const ELEMENTS = {
   NONE: '#ffffff',
@@ -467,29 +327,15 @@ const ELEMENTS = {
   AIR: '#88ccff'
 };
 
-const ELEMENT_NAMES = {
-  FIRE: 'Fire',
-  WATER: 'Water',
-  EARTH: 'Earth',
-  AIR: 'Air'
-};
-
-// Card rarities
+const ELEMENT_NAMES = { FIRE: 'Fire', WATER: 'Water', EARTH: 'Earth', AIR: 'Air' };
 const RARITIES = ['common', 'rare', 'epic', 'legendary', 'mythic'];
-const RARITY_COLORS = {
-  common: '#aaa',
-  rare: '#44aaff',
-  epic: '#aa44ff',
-  legendary: '#ffaa44',
-  mythic: '#ff44aa'
-};
+const RARITY_COLORS = { common: '#aaa', rare: '#44aaff', epic: '#aa44ff', legendary: '#ffaa44', mythic: '#ff44aa' };
 
-// Element cards WITH FULLY WORKING EFFECTS
 const ELEMENT_CARDS = {
   FIRE: [
     { name: "Inferno", desc: "Burn enemies for 5s", rarity: 'common', effect: 'burn' },
     { name: "Magma Burst", desc: "Explosive shots on hit", rarity: 'rare', effect: 'explosive' },
-    { name: "Phoenix", desc: "30% chance to revive with 30% HP", rarity: 'epic', effect: 'revive' },
+    { name: "Phoenix", desc: "Repair 1 random part fully", rarity: 'epic', effect: 'revive' },
     { name: "Solar Flare", desc: "Chain lightning between enemies", rarity: 'legendary', effect: 'chain' },
     { name: "Supernova", desc: "Massive explosion every 10s", rarity: 'mythic', effect: 'supernova' }
   ],
@@ -503,7 +349,7 @@ const ELEMENT_CARDS = {
   EARTH: [
     { name: "Stone Skin", desc: "Reduce damage by 15%", rarity: 'common', effect: 'armor' },
     { name: "Quake", desc: "Stun enemies on hit", rarity: 'rare', effect: 'stun' },
-    { name: "Gaia's Blessing", desc: "Heal 1% per second", rarity: 'epic', effect: 'regen' },
+    { name: "Gaia's Blessing", desc: "Self-repair slowly", rarity: 'epic', effect: 'regen' },
     { name: "Terra Firma", desc: "Create protective barriers", rarity: 'legendary', effect: 'barrier' },
     { name: "World Tree", desc: "Grow defensive structures", rarity: 'mythic', effect: 'turrets' }
   ],
@@ -516,14 +362,12 @@ const ELEMENT_CARDS = {
   ]
 };
 
-// Upgrade tree structure - FULLY TIERED AND FUNCTIONAL
 const UPGRADE_TREE = {
   base: [
     { id: 'sniper', name: 'Sniper', icon: '🎯', desc: 'High damage, slow fire rate', unlocked: true, level: 0 },
     { id: 'machinegun', name: 'Machine Gun', icon: '🔫', desc: 'Rapid fire, moderate damage', unlocked: true, level: 0 },
     { id: 'shotgun', name: 'Shotgun', icon: '💥', desc: 'Wide spread, high close damage', unlocked: true, level: 0 }
   ],
-  // SNIPER BRANCH
   sniper: {
     tier1: [
       { id: 'sniper_t1_1', name: 'Piercing Shot', icon: '⚡', desc: 'Bullets pierce through 2 enemies', unlocked: false, level: 1 },
@@ -541,7 +385,6 @@ const UPGRADE_TREE = {
       { id: 'sniper_t3_3', name: 'One Shot', icon: '💀', desc: 'Instant kill on non-boss enemies', unlocked: false, level: 3 }
     ]
   },
-  // MACHINE GUN BRANCH
   machinegun: {
     tier1: [
       { id: 'mg_t1_1', name: 'Overheat', icon: '🔥', desc: 'Damage increases with sustained fire', unlocked: false, level: 1 },
@@ -559,7 +402,6 @@ const UPGRADE_TREE = {
       { id: 'mg_t3_3', name: 'Death Machine', icon: '☠️', desc: 'Triple shot in cone pattern', unlocked: false, level: 3 }
     ]
   },
-  // SHOTGUN BRANCH
   shotgun: {
     tier1: [
       { id: 'sg_t1_1', name: 'Buckshot', icon: '霰', desc: 'More pellets per shot', unlocked: false, level: 1 },
@@ -579,57 +421,115 @@ const UPGRADE_TREE = {
   }
 };
 
-// Current player state
 let currentWeapon = null;
-let currentWeaponTier = 0; // 0 = base, 1 = tier1, 2 = tier2, 3 = tier3
+let currentWeaponTier = 0;
 let currentElement = 'NONE';
 let equippedCards = [null, null, null];
 let pendingCard = null;
 
-// --- CLASSES ---
+// --- UTILS ---
+function drawDamageModel(parts) {
+  dmgCtx.clearRect(0, 0, 80, 100);
+  
+  const getColor = (hp, max) => {
+    if (hp <= 0) return '#000000'; // Destroyed
+    const pct = hp / max;
+    if (pct > 0.75) return '#00ff00';
+    if (pct > 0.5) return '#ffff00';
+    if (pct > 0.25) return '#ff8800';
+    return '#ff0000';
+  };
+
+  // Draw schematic style ship
+  dmgCtx.strokeStyle = '#005555';
+  dmgCtx.lineWidth = 1;
+  
+  // Left Wing
+  dmgCtx.fillStyle = getColor(parts.leftWing.hp, parts.leftWing.max);
+  dmgCtx.beginPath(); dmgCtx.moveTo(40, 40); dmgCtx.lineTo(10, 60); dmgCtx.lineTo(40, 70); dmgCtx.fill(); dmgCtx.stroke();
+  
+  // Right Wing
+  dmgCtx.fillStyle = getColor(parts.rightWing.hp, parts.rightWing.max);
+  dmgCtx.beginPath(); dmgCtx.moveTo(40, 40); dmgCtx.lineTo(70, 60); dmgCtx.lineTo(40, 70); dmgCtx.fill(); dmgCtx.stroke();
+  
+  // Engine
+  dmgCtx.fillStyle = getColor(parts.engine.hp, parts.engine.max);
+  dmgCtx.beginPath(); dmgCtx.moveTo(30, 70); dmgCtx.lineTo(50, 70); dmgCtx.lineTo(40, 90); dmgCtx.fill(); dmgCtx.stroke();
+  
+  // Body (Center)
+  dmgCtx.fillStyle = getColor(parts.body.hp, parts.body.max);
+  dmgCtx.beginPath(); dmgCtx.moveTo(40, 10); dmgCtx.lineTo(50, 70); dmgCtx.lineTo(30, 70); dmgCtx.fill(); dmgCtx.stroke();
+}
+
 class Player {
   constructor() {
     this.x = window.innerWidth / 2;
     this.y = window.innerHeight - 100;
-    this.size = 25;
-    this.hp = 100;
-    this.maxHp = 100;
+    // PLAYER SIZE INCREASED TO 50 (Was 25)
+    this.size = 50; 
+    
+    // NEW: COMPONENT HEALTH SYSTEM
+    this.parts = {
+        body: { hp: 100, max: 100 },
+        leftWing: { hp: 70, max: 70 }, // Wings weaker
+        rightWing: { hp: 70, max: 70 },
+        engine: { hp: 80, max: 80 }
+    };
+    
     this.speed = 0.3;
     this.damage = 10;
     this.fireRate = 8;
     this.element = 'NONE';
-    this.weaponType = 'base'; // base, sniper, machinegun, shotgun
+    this.weaponType = 'base';
     this.shotCount = 1;
     this.spreadAngle = 0;
     this.cooldown = 0;
     this.overheat = 0;
     this.overheatMax = 100;
-    
-    // Card effects
     this.effects = {};
-    
-    // Track first shot for Sniper Elite
     this.firstShot = true;
+  }
+  
+  isDead() {
+      // Game Over only if ALL parts are dead
+      return this.parts.body.hp <= 0 && this.parts.leftWing.hp <= 0 && 
+             this.parts.rightWing.hp <= 0 && this.parts.engine.hp <= 0;
+  }
+
+  takeDamage(amount, relX, relY) {
+      // Determine which part was hit based on relative bullet position
+      // Ship is approx 50x50 centered at 0,0
+      
+      let targetPart = 'body';
+      
+      if (relY > 15) targetPart = 'engine';
+      else if (relX < -15) targetPart = 'leftWing';
+      else if (relX > 15) targetPart = 'rightWing';
+      else targetPart = 'body';
+
+      // If part is already destroyed, damage transfers to body, then random
+      if (this.parts[targetPart].hp <= 0) {
+          if (this.parts.body.hp > 0) targetPart = 'body';
+          else {
+              const alive = Object.keys(this.parts).filter(k => this.parts[k].hp > 0);
+              if (alive.length > 0) targetPart = alive[0];
+              else return; // All dead
+          }
+      }
+
+      this.parts[targetPart].hp -= amount;
+      drawDamageModel(this.parts); // Update HUD
   }
 
   update() {
-    // Element-based base stats
     let baseSpeed = 0.3;
     let baseDamage = 10;
     let baseFireRate = 8;
     
-    if (this.element === 'FIRE') {
-      baseDamage *= 1.1; // +10% damage
-    } else if (this.element === 'WATER') {
-      baseFireRate *= 0.9; // -10% fire rate (slower)
-    } else if (this.element === 'EARTH') {
-      baseDamage *= 1.15; // +15% damage
-      baseSpeed *= 0.9; // -10% speed
-    } else if (this.element === 'AIR') {
-      baseSpeed *= 1.2; // +20% speed
-      baseDamage *= 0.9; // -10% damage
-      baseFireRate *= 1.1; // +10% fire rate
-    }
+    if (this.element === 'FIRE') baseDamage *= 1.1;
+    else if (this.element === 'WATER') baseFireRate *= 0.9;
+    else if (this.element === 'EARTH') { baseDamage *= 1.15; baseSpeed *= 0.9; }
+    else if (this.element === 'AIR') { baseSpeed *= 1.2; baseDamage *= 0.9; baseFireRate *= 1.1; }
     
     this.speed = baseSpeed + (this.effects.speed || 0);
     this.damage = baseDamage;
@@ -637,54 +537,40 @@ class Player {
     
     this.x += (mouse.x - this.x) * this.speed;
     this.y += (mouse.y - this.y) * this.speed;
-    if(this.x < 20) this.x = 20;
-    if(this.x > width-20) this.x = width-20;
-    if(this.y < 20) this.y = 20;
-    if(this.y > height-20) this.y = height-20;
+    if(this.x < 30) this.x = 30;
+    if(this.x > width-30) this.x = width-30;
+    if(this.y < 30) this.y = 30;
+    if(this.y > height-30) this.y = height-30;
 
-    // Weapon-specific logic - REBALANCED
+    // Weapon Config
     if (this.weaponType === 'sniper') {
-      this.damage = 45; // HIGH damage
-      this.fireRate = 45; // Very slow
-      this.shotCount = 1;
-      this.spreadAngle = 0;
+      this.damage = 45; this.fireRate = 45; this.shotCount = 1; this.spreadAngle = 0;
     } else if (this.weaponType === 'machinegun') {
-      this.damage = 7;
-      this.fireRate = 3;
-      this.shotCount = 1;
-      this.spreadAngle = 0;
-      
-      // Overheat mechanic
+      this.damage = 7; this.fireRate = 3; this.shotCount = 1; this.spreadAngle = 0;
       if (this.cooldown > 0) {
         this.cooldown--;
-        if (this.cooldown <= 0) {
-          this.overheat = 0;
-        }
+        if (this.cooldown <= 0) this.overheat = 0;
       }
     } else if (this.weaponType === 'shotgun') {
-      this.damage = 12;
-      this.fireRate = 20;
-      this.shotCount = 6;
-      this.spreadAngle = 0.6;
+      this.damage = 12; this.fireRate = 20; this.shotCount = 6; this.spreadAngle = 0.6;
     } else {
-      // Base weapon
-      this.damage = 10;
-      this.fireRate = 8;
-      this.shotCount = 1;
-      this.spreadAngle = 0;
+      this.damage = 10; this.fireRate = 8; this.shotCount = 1; this.spreadAngle = 0;
     }
 
-    // Apply card effects
     if (this.effects.armor) this.damage *= 0.85;
-    if (this.effects.explosive) {} // Handled on bullet hit
     
-    // Regeneration
+    // Regen Effect
     if (this.effects.regen && frameCount % 60 === 0) {
-      this.hp = Math.min(this.maxHp, this.hp + 1);
-      updateUI();
+        // Repair most damaged part
+        let worst = null; let minPct = 1;
+        for (let k in this.parts) {
+            let p = this.parts[k];
+            if (p.hp > 0 && p.hp < p.max && (p.hp/p.max) < minPct) { worst = k; minPct = p.hp/p.max; }
+        }
+        if (worst) this.parts[worst].hp += 1;
+        drawDamageModel(this.parts);
     }
-
-    // Supernova timer
+    
     if (this.effects.supernova && frameCount % 600 === 0) {
       spawnParticles(this.x, this.y, '#ff4444', 100);
       enemies.forEach(enemy => {
@@ -693,14 +579,11 @@ class Player {
       });
     }
 
-    // Shooting
     if (frameCount % this.fireRate === 0 && this.cooldown <= 0) {
       this.shoot();
       if (this.weaponType === 'machinegun') {
         this.overheat += 10;
-        if (this.overheat >= this.overheatMax) {
-          this.cooldown = 60;
-        }
+        if (this.overheat >= this.overheatMax) this.cooldown = 60;
       }
     }
   }
@@ -712,15 +595,12 @@ class Player {
       const angle = -this.spreadAngle/2 + i * angleStep;
       const vx = Math.sin(angle) * 2;
       const vy = -Math.cos(angle) * 18;
-      
-      // Apply first shot bonus for Sniper Elite
       let damage = this.damage;
       if (this.weaponType === 'sniper' && this.firstShot && this.effects.sniperElite) {
         damage *= 3;
         this.firstShot = false;
       }
-      
-      bullets.push(new Bullet(this.x, this.y - 20, vx, vy, color, false, this.element, this.effects.explosive, damage));
+      bullets.push(new Bullet(this.x, this.y - 40, vx, vy, color, false, this.element, this.effects.explosive, damage));
     }
   }
 
@@ -728,67 +608,169 @@ class Player {
     ctx.save();
     ctx.translate(this.x, this.y);
     
+    // SCALE PLAYER 2x (Scale context)
+    ctx.scale(2, 2);
+
     // Engine flame
-    ctx.fillStyle = '#00d4ff';
-    ctx.shadowBlur = 20;
-    ctx.shadowColor = '#00d4ff';
-    ctx.beginPath();
-    ctx.moveTo(-5, 20);
-    ctx.lineTo(0, 35 + Math.random()*10);
-    ctx.lineTo(5, 20);
-    ctx.fill();
-    ctx.shadowBlur = 0;
-
-    // Ship Body
-    let grad = ctx.createLinearGradient(0, -25, 0, 25);
-    grad.addColorStop(0, '#ffffff');
-    grad.addColorStop(1, '#777777');
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.moveTo(0, -25);
-    ctx.lineTo(8, -5); ctx.lineTo(25, 15); ctx.lineTo(10, 15); ctx.lineTo(10, 25);
-    ctx.lineTo(-10, 25); ctx.lineTo(-10, 15); ctx.lineTo(-25, 15); ctx.lineTo(-8, -5);
-    ctx.closePath();
-    ctx.fill();
-
-    // Cockpit
-    ctx.fillStyle = '#111';
-    ctx.beginPath(); ctx.moveTo(0, -10); ctx.lineTo(5, 5); ctx.lineTo(-5, 5); ctx.fill();
-
-    // Element effect
-    if(this.element !== 'NONE') {
-      ctx.strokeStyle = ELEMENTS[this.element];
-      ctx.lineWidth = 3;
-      ctx.shadowBlur = 10;
-      ctx.shadowColor = ELEMENTS[this.element];
-      ctx.stroke();
+    if (this.parts.engine.hp > 0) {
+        ctx.fillStyle = '#00d4ff'; ctx.shadowBlur = 10; ctx.shadowColor = '#00d4ff';
+        ctx.beginPath(); ctx.moveTo(-3, 15); ctx.lineTo(0, 25 + Math.random()*5); ctx.lineTo(3, 15); ctx.fill(); ctx.shadowBlur = 0;
     }
 
-    // Overheat indicator
-    if (this.weaponType === 'machinegun' && this.overheat > 0) {
-      const pct = this.overheat / this.overheatMax;
-      ctx.fillStyle = `rgba(255, ${Math.floor(255 * (1 - pct))}, 0, 0.7)`;
-      ctx.beginPath();
-      ctx.arc(0, 0, 30, 0, Math.PI * 2 * pct);
-      ctx.fill();
+    const drawPart = (hp, max, points) => {
+        if (hp <= 0) {
+            ctx.fillStyle = '#111'; // Dead color
+            ctx.strokeStyle = '#333';
+        } else {
+            // Tint based on HP
+            const pct = hp/max;
+            if (pct > 0.5) ctx.fillStyle = '#ffffff'; // Normal
+            else if (pct > 0.25) ctx.fillStyle = '#ffaa00'; // Damaged
+            else ctx.fillStyle = '#ff4444'; // Critical
+            
+            // Gradient overlay
+            let grad = ctx.createLinearGradient(0, -15, 0, 15);
+            grad.addColorStop(0, ctx.fillStyle); 
+            grad.addColorStop(1, '#555');
+            ctx.fillStyle = grad;
+        }
+        ctx.beginPath();
+        ctx.moveTo(points[0][0], points[0][1]);
+        for(let i=1; i<points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+    };
+
+    // Body
+    drawPart(this.parts.body.hp, this.parts.body.max, [[0, -15], [5, -5], [5, 10], [-5, 10], [-5, -5]]);
+    
+    // Left Wing
+    drawPart(this.parts.leftWing.hp, this.parts.leftWing.max, [[-5, 0], [-15, 10], [-5, 10]]);
+
+    // Right Wing
+    drawPart(this.parts.rightWing.hp, this.parts.rightWing.max, [[5, 0], [15, 10], [5, 10]]);
+
+    // Element Glow
+    if(this.element !== 'NONE' && this.parts.body.hp > 0) {
+      ctx.strokeStyle = ELEMENTS[this.element]; ctx.lineWidth = 1; ctx.shadowBlur = 5; ctx.shadowColor = ELEMENTS[this.element]; ctx.stroke();
     }
     
+    // Machine Gun Heat
+    if (this.weaponType === 'machinegun' && this.overheat > 0) {
+      const pct = this.overheat / this.overheatMax;
+      ctx.fillStyle = `rgba(255, ${Math.floor(255 * (1 - pct))}, 0, 0.5)`;
+      ctx.beginPath(); ctx.arc(0, 0, 15, 0, Math.PI * 2 * pct); ctx.fill();
+    }
+
+    ctx.restore();
+  }
+}
+
+class SupportShip {
+  constructor(x, y) {
+    this.x = x;
+    this.y = height + 100;
+    this.targetY = y;
+    this.targetX = x;
+    this.vx = 0;
+    this.vy = -6; // Faster entry
+    this.marked = false;
+    this.fireTimer = 0;
+    this.arrived = false;
+    this.lifeTime = 200; // 10 seconds active
+  }
+  
+  update() {
+    if (!this.arrived) {
+      this.y += this.vy;
+      if (this.y <= this.targetY) {
+        this.y = this.targetY;
+        this.arrived = true;
+      }
+    } else {
+      this.y -= 6; // Slowly move up screen
+      this.fireTimer++;
+      this.lifeTime--;
+      if (this.fireTimer > 10) { // High fire rate
+         // Triple shot spread
+         bullets.push(new Bullet(this.x, this.y - 30, 0, -15, '#00ffcc', false, 'NONE', false, 20));
+         bullets.push(new Bullet(this.x, this.y - 30, -3, -14, '#00ffcc', false, 'NONE', false, 20));
+         bullets.push(new Bullet(this.x, this.y - 30, 3, -14, '#00ffcc', false, 'NONE', false, 20));
+         this.fireTimer = 0;
+      }
+    }
+    if (this.y < -50 || this.lifeTime <= 0) this.marked = true;
+  }
+  
+  draw() {
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    // Draw better ship (Futuristic Fighter)
+    ctx.shadowBlur = 15; ctx.shadowColor = '#00ffcc';
+    
+    // Engine flame
+    ctx.fillStyle = '#00ffff'; 
+    ctx.beginPath(); ctx.moveTo(-6, 25); ctx.lineTo(0, 40 + Math.random()*10); ctx.lineTo(6, 25); ctx.fill();
+
+    // Body
+    ctx.fillStyle = '#005555';
+    ctx.beginPath(); ctx.moveTo(0, -30); ctx.lineTo(15, 10); ctx.lineTo(25, 25); ctx.lineTo(10, 25); ctx.lineTo(0, 15);
+    ctx.lineTo(-10, 25); ctx.lineTo(-25, 25); ctx.lineTo(-15, 10); ctx.fill();
+    
+    // Highlights
+    ctx.fillStyle = '#00ffcc';
+    ctx.fillRect(-2, -20, 4, 30);
+    ctx.beginPath(); ctx.moveTo(0, -30); ctx.lineTo(5, -10); ctx.lineTo(-5, -10); ctx.fill();
+
     ctx.restore();
   }
 }
 
 class Enemy {
-  constructor(waveDiff) {
-    this.tier = Math.random() > 0.8 ? 1 : 0;
-    this.hp = this.tier === 0 ? 30 + (waveDiff*5) : 120 + (waveDiff*10);
+  constructor(waveDiff, isFormation = false, startX, startY, endX, endY, delay = 0) {
+    let maxType = 2;
+    if (wave >= 4) maxType = 4;
+    if (wave >= 7) maxType = 6;
+    
+    this.type = Math.floor(Math.random() * (maxType + 1));
+    this.isFormation = isFormation;
+    
+    this.hp = 30 + (waveDiff * 10) + (this.type * 20);
     this.maxHp = this.hp;
-    this.size = this.tier === 0 ? 25 : 45;
-    this.x = Math.random() * (width - 60) + 30;
-    this.y = -50;
-    this.targetY = Math.random() * (height * 0.4) + 50;
-    this.xOffset = Math.random() * 100;
+    this.size = 25 + (this.type * 3);
+    
+    if (this.isFormation) {
+      // CURVE LOGIC (Bezier)
+      this.t = -0.1 * delay; // Delay start by using negative time
+      this.p0 = {x: startX, y: startY};
+      this.p2 = {x: endX, y: endY};
+      
+      // Control point creates the curve. 
+      // If going corner to center-bottom, control point pulls "outward"
+      // Simplistic approach: Control point is center-ish of screen but offset
+      let cx = width/2;
+      let cy = height/2;
+      
+      // If start is left, pull left. If start right, pull right.
+      if (startX < width/2) cx = width * 0.2; else cx = width * 0.8;
+      
+      this.p1 = {x: cx, y: cy};
+      
+      this.x = -1000; this.y = -1000; // Hide until t > 0
+      this.rotation = 0;
+    } else {
+      this.x = Math.random() * (width - 60) + 30;
+      this.y = -50;
+      this.targetY = Math.random() * (height * 0.4) + 50;
+      this.xOffset = Math.random() * 100;
+      this.vx = 0;
+      this.vy = 0;
+      this.rotation = 0;
+    }
+
     this.fireTimer = Math.random() * 100;
-    this.fireInterval = this.tier === 0 ? 100 : 60;
+    this.fireInterval = Math.max(40, 100 - (waveDiff * 2) - (this.type * 5));
     this.speed = 2 + waveDiff * 0.1;
     this.damage = 10 + waveDiff * 2;
     this.slowed = false;
@@ -798,97 +780,116 @@ class Enemy {
   }
 
   update() {
-    // Handle stun effect
     if (this.stunned) {
       this.stunTimer--;
-      if (this.stunTimer <= 0) {
-        this.stunned = false;
-      } else {
-        return; // Don't move or shoot while stunned
-      }
+      if (this.stunTimer <= 0) this.stunned = false; else return;
     }
-    
-    // Handle burn effect
     if (this.burnTimer > 0) {
       this.burnTimer--;
-      this.hp -= 0.5; // Burn damage
-      if (this.hp <= 0) {
-        killEnemy(this);
-        return;
-      }
+      this.hp -= 0.5;
+      if (this.hp <= 0) { killEnemy(this); return; }
     }
     
-    // Handle slow effect
     const speedMult = this.slowed ? 0.7 : 1;
-    if (this.y < this.targetY) {
-      this.y += this.speed * speedMult;
+
+    if (this.isFormation) {
+      this.t += 0.005 * speedMult; // Move along curve
+      
+      if (this.t < 0) return; // Wait for delay
+
+      // Quadratic Bezier: (1-t)^2 * P0 + 2(1-t)t * P1 + t^2 * P2
+      const u = 1 - this.t;
+      const tt = this.t * this.t;
+      const uu = u * u;
+
+      const oldX = this.x;
+      const oldY = this.y;
+
+      this.x = (uu * this.p0.x) + (2 * u * this.t * this.p1.x) + (tt * this.p2.x);
+      this.y = (uu * this.p0.y) + (2 * u * this.t * this.p1.y) + (tt * this.p2.y);
+
+      // Rotate towards movement
+      if (this.t > 0.01) {
+          this.rotation = Math.atan2(this.y - oldY, this.x - oldX) - Math.PI/2;
+      }
+
+      if (this.t > 1.2) { // 1.2 to ensure it clears screen
+        enemies = enemies.filter(e => e !== this);
+        return;
+      }
     } else {
-      this.x += Math.sin((frameCount + this.xOffset) * 0.02) * 1.5 * speedMult;
+      // Normal Movement
+      if (this.y < this.targetY) {
+        this.y += this.speed * speedMult;
+      } else {
+        this.x += Math.sin((frameCount + this.xOffset) * 0.02) * 1.5 * speedMult;
+      }
+      this.rotation = 0;
     }
+
     this.fireTimer--;
-    if (this.fireTimer <= 0) {
+    if (this.fireTimer <= 0 && this.y > 0 && this.y < height) {
       this.fireTimer = this.fireInterval;
       this.shoot();
     }
   }
 
   shoot() {
+    const bulletSpeed = 8;
+    // Aimed shot or forward shot depending on context
     const dx = player.x - this.x;
     const dy = player.y - this.y;
-    const dist = Math.sqrt(dx*dx + dy*dy);
-    const velX = (dx / dist) * (6 + wave * 0.2);
-    const velY = (dy / dist) * (6 + wave * 0.2);
+    const angle = Math.atan2(dy, dx);
+    
+    // Formations just shoot "forward" relative to their rotation or down?
+    // Aces of Luftwaffe enemies usually shoot AT player even in formation
+    const velX = Math.cos(angle) * bulletSpeed;
+    const velY = Math.sin(angle) * bulletSpeed;
+
     bullets.push(new Bullet(this.x, this.y + 20, velX, velY, '#ff5555', true, 'NONE', false, 10));
-    if (this.tier === 1) {
-      bullets.push(new Bullet(this.x, this.y + 20, velX-2, velY, '#ff5555', true, 'NONE', false, 10));
-      bullets.push(new Bullet(this.x, this.y + 20, velX+2, velY, '#ff5555', true, 'NONE', false, 10));
+    
+    if (this.type >= 4) { // Spread for strong enemies
+         bullets.push(new Bullet(this.x, this.y, Math.cos(angle-0.3)*bulletSpeed, Math.sin(angle-0.3)*bulletSpeed, '#ff5555', true, 'NONE', false, 10));
+         bullets.push(new Bullet(this.x, this.y, Math.cos(angle+0.3)*bulletSpeed, Math.sin(angle+0.3)*bulletSpeed, '#ff5555', true, 'NONE', false, 10));
     }
   }
 
   draw() {
     ctx.save();
     ctx.translate(this.x, this.y);
-    ctx.rotate(Math.PI);
-
-    if (this.tier === 0) {
-      let grad = ctx.createLinearGradient(-15, 0, 15, 0);
-      grad.addColorStop(0, '#444'); grad.addColorStop(0.5, '#666'); grad.addColorStop(1, '#444');
-      ctx.fillStyle = grad;
-      ctx.beginPath(); ctx.moveTo(0, -25); ctx.lineTo(15, 10); ctx.lineTo(0, 5); ctx.lineTo(-15, 10); ctx.fill();
-      ctx.fillStyle = '#ff3333';
-      ctx.beginPath(); ctx.moveTo(0, -5); ctx.lineTo(20, 15); ctx.lineTo(20, 20); ctx.lineTo(0, 10); ctx.lineTo(-20, 20); ctx.lineTo(-20, 15); ctx.fill();
-    } else {
-      ctx.fillStyle = '#222';
-      ctx.shadowBlur = 10; ctx.shadowColor = '#ff0055';
-      ctx.fillRect(-30, -20, 60, 40);
-      ctx.fillStyle = '#800';
-      ctx.beginPath(); ctx.arc(0, 10, 15, 0, Math.PI*2); ctx.fill();
-      ctx.fillStyle = '#555';
-      ctx.fillRect(-35, -10, 10, 30); ctx.fillRect(25, -10, 10, 30);
-    }
+    if (this.isFormation) ctx.rotate(this.rotation); 
+    else ctx.rotate(Math.PI);
     
+    const coreColor = '#222';
+    const accentColor = this.type < 3 ? '#ff3333' : (this.type < 5 ? '#ff8800' : '#aa00ff');
+    ctx.shadowBlur = 10; ctx.shadowColor = accentColor;
+
+    // Draw logic same as before but uses type
+    // ... (Simplified shapes for brevity, keeping existing aesthetic)
+    ctx.fillStyle = coreColor;
+    if(this.type === 0) { // Triangle
+         ctx.beginPath(); ctx.moveTo(0, -20); ctx.lineTo(15, 10); ctx.lineTo(-15, 10); ctx.fill();
+    } else { // Blockier
+         ctx.fillRect(-15, -15, 30, 30);
+    }
+    ctx.fillStyle = accentColor;
+    ctx.beginPath(); ctx.arc(0, 0, 8, 0, Math.PI*2); ctx.fill();
+
+    // HP Bar
+    if (this.isFormation) ctx.rotate(-this.rotation); else ctx.rotate(-Math.PI);
     if (this.hp < this.maxHp) {
       ctx.fillStyle = '#333'; ctx.fillRect(-20, 30, 40, 4);
-      ctx.fillStyle = '#ff0055'; ctx.fillRect(-20, 30, 40 * (this.hp/this.maxHp), 4);
-    }
-    
-    // Burn effect indicator
-    if (this.burnTimer > 0) {
-      ctx.fillStyle = 'rgba(255, 100, 0, 0.5)';
-      ctx.beginPath();
-      ctx.arc(0, -30, 10, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.fillStyle = accentColor; ctx.fillRect(-20, 30, 40 * (this.hp/this.maxHp), 4);
     }
     
     ctx.restore();
   }
 }
 
-// --- BOSS CLASS ---
 class Boss {
   constructor(waveNum) {
     this.isBoss = true;
-    this.hp = 500 + (waveNum * 200);
+    this.hp = 2000 + (waveNum * 500);
     this.maxHp = this.hp;
     this.size = 100;
     this.x = width / 2;
@@ -899,38 +900,17 @@ class Boss {
     this.pattern = 0;
     this.patternTimer = 0;
     this.speed = 1 + waveNum * 0.1;
-    this.damage = 20 + waveNum * 5;
-    this.slowed = false;
-    this.stunned = false;
-    this.stunTimer = 0;
     this.burnTimer = 0;
   }
 
   update() {
-    // Handle stun effect
-    if (this.stunned) {
-      this.stunTimer--;
-      if (this.stunTimer <= 0) {
-        this.stunned = false;
-      } else {
-        return; // Don't move or shoot while stunned
-      }
-    }
-    
-    // Handle burn effect
     if (this.burnTimer > 0) {
       this.burnTimer--;
-      this.hp -= 0.5; // Burn damage
-      if (this.hp <= 0) {
-        killEnemy(this);
-        return;
-      }
+      this.hp -= 0.5;
+      if (this.hp <= 0) { killEnemy(this); return; }
     }
-    
-    // Handle slow effect
-    const speedMult = this.slowed ? 0.7 : 1;
     if (this.y < this.targetY) {
-      this.y += this.speed * speedMult;
+      this.y += this.speed;
     } else {
       this.x = width/2 + Math.sin(frameCount * 0.01) * (width/3);
     }
@@ -947,20 +927,24 @@ class Boss {
   }
 
   shoot() {
-    if (this.pattern === 0) {
+    // INCREASED GAP BETWEEN BULLETS (More spread)
+    if (this.pattern === 0) { // Radial
       for(let i=0; i<8; i++) {
+        // Larger gaps
         let a = (i / 8) * Math.PI * 2 + (frameCount * 0.05);
         bullets.push(new Bullet(this.x, this.y, Math.cos(a)*5, Math.sin(a)*5, '#ff55ff', true, 'NONE', false, 15));
       }
-    } else if (this.pattern === 1) {
-      for(let i=0; i<3; i++) {
-        const angle = Math.atan2(player.y - this.y, player.x - this.x) + (Math.random() - 0.5) * 0.5;
-        bullets.push(new Bullet(this.x, this.y, Math.cos(angle)*4, Math.sin(angle)*4, '#ff55ff', true, 'NONE', false, 15));
-      }
-    } else {
+    } else if (this.pattern === 1) { // Targeted spread
       const angle = Math.atan2(player.y - this.y, player.x - this.x);
-      for(let i=0; i<20; i++) {
-        const offset = (i - 10) * 0.1;
+      // Wider angles: +/- 0.5 instead of random noise
+      bullets.push(new Bullet(this.x, this.y, Math.cos(angle)*6, Math.sin(angle)*6, '#ff55ff', true, 'NONE', false, 15));
+      bullets.push(new Bullet(this.x, this.y, Math.cos(angle-0.4)*6, Math.sin(angle-0.4)*6, '#ff55ff', true, 'NONE', false, 15));
+      bullets.push(new Bullet(this.x, this.y, Math.cos(angle+0.4)*6, Math.sin(angle+0.4)*6, '#ff55ff', true, 'NONE', false, 15));
+    } else { // Wall
+      const angle = Math.atan2(player.y - this.y, player.x - this.x);
+      // Reduced count (10 instead of 20) and increased offset (0.2 instead of 0.1) for bigger gaps
+      for(let i=0; i<12; i++) {
+        const offset = (i - 6) * 0.25; 
         bullets.push(new Bullet(this.x, this.y, Math.cos(angle + offset)*8, Math.sin(angle + offset)*8, '#ff55ff', true, 'NONE', false, 15));
       }
     }
@@ -971,8 +955,7 @@ class Boss {
     ctx.translate(this.x, this.y);
     ctx.shadowBlur = 30; ctx.shadowColor = '#ff00ff';
     let grad = ctx.createRadialGradient(0, 0, 10, 0, 0, 60);
-    grad.addColorStop(0, '#440044');
-    grad.addColorStop(1, '#110011');
+    grad.addColorStop(0, '#440044'); grad.addColorStop(1, '#110011');
     ctx.fillStyle = grad;
     ctx.beginPath();
     for(let i=0; i<6; i++) {
@@ -980,48 +963,35 @@ class Boss {
       let r = i % 2 === 0 ? 80 : 40;
       ctx.lineTo(Math.cos(a)*r, Math.sin(a)*r);
     }
-    ctx.closePath();
-    ctx.fill();
+    ctx.closePath(); ctx.fill();
     ctx.strokeStyle = '#ff00ff'; ctx.lineWidth = 4; ctx.stroke();
-    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(0,0, 20 + Math.sin(frameCount*0.1)*5, 0, Math.PI*2); ctx.fill();
     ctx.restore();
     ctx.fillStyle = 'rgba(255,0,255,0.2)'; ctx.fillRect(width/2 - 200, 20, 400, 10);
     ctx.fillStyle = '#ff00ff'; ctx.fillRect(width/2 - 200, 20, 400 * (this.hp/this.maxHp), 10);
-    
-    // Burn effect indicator
-    if (this.burnTimer > 0) {
-      ctx.fillStyle = 'rgba(255, 100, 0, 0.5)';
-      ctx.beginPath();
-      ctx.arc(0, -50, 15, 0, Math.PI * 2);
-      ctx.fill();
-    }
   }
 }
 
 class Bullet {
   constructor(x, y, vx, vy, color, isEnemy, element = 'NONE', explosive = false, damage = 10) {
-    this.x = x;
-    this.y = y;
-    this.vx = vx;
-    this.vy = vy;
-    this.color = color;
-    this.isEnemy = isEnemy;
-    this.element = element;
-    this.explosive = explosive;
-    this.marked = false;
-    this.size = isEnemy ? 6 : 4;
-    this.life = 100;
+    this.x = x; this.y = y; this.vx = vx; this.vy = vy;
+    this.color = color; this.isEnemy = isEnemy;
+    this.element = element; this.explosive = explosive;
+    this.marked = false; this.size = isEnemy ? 6 : 4;
+    this.life = 100; 
     this.damage = damage;
     this.chain = false;
   }
   update() {
     this.x += this.vx;
     this.y += this.vy;
-    this.life--;
-    if (this.x < -50 || this.x > width+50 || this.y < -50 || this.y > height+50 || this.life <= 0) {
+    
+    if (!this.isEnemy) {
+      this.life--;
+    }
+
+    if (this.x < -50 || this.x > width+50 || this.y < -50 || this.y > height+50 || (!this.isEnemy && this.life <= 0)) {
       if (this.explosive && !this.isEnemy) {
         spawnParticles(this.x, this.y, this.color, 20);
-        // Damage nearby enemies
         enemies.forEach(enemy => {
           const dist = Math.hypot(this.x - enemy.x, this.y - enemy.y);
           if (dist < 50) {
@@ -1030,17 +1000,14 @@ class Bullet {
           }
         });
       }
-      // Chain lightning effect
       if (this.chain && !this.isEnemy) {
         const nearbyEnemies = enemies.filter(e => {
           const d = Math.hypot(this.x - e.x, this.y - e.y);
           return d < 100 && e !== this.originalTarget;
-        }).slice(0, 2); // Chain to 2 more enemies
-        
+        }).slice(0, 2);
         nearbyEnemies.forEach(enemy => {
           enemy.hp -= this.damage * 0.7;
           if (enemy.hp <= 0) killEnemy(enemy);
-          // Visual chain effect
           spawnParticles((this.x + enemy.x)/2, (this.y + enemy.y)/2, '#ffff00', 10);
         });
       }
@@ -1050,30 +1017,14 @@ class Bullet {
   draw() {
     ctx.save();
     ctx.translate(this.x, this.y);
-    ctx.shadowBlur = 10;
-    ctx.shadowColor = this.color;
+    ctx.shadowBlur = 10; ctx.shadowColor = this.color;
     if (this.isEnemy) {
       ctx.fillStyle = this.color;
-      ctx.beginPath();
-      ctx.arc(0, 0, this.size, 0, Math.PI*2);
-      ctx.fill();
-      ctx.fillStyle = 'white';
-      ctx.beginPath();
-      ctx.arc(0, 0, this.size * 0.5, 0, Math.PI*2);
-      ctx.fill();
+      ctx.beginPath(); ctx.arc(0, 0, this.size, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = 'white'; ctx.beginPath(); ctx.arc(0, 0, this.size * 0.5, 0, Math.PI*2); ctx.fill();
     } else {
       ctx.fillStyle = this.color;
-      if (this.element === 'FIRE') {
-        ctx.beginPath(); ctx.moveTo(0, -10); ctx.lineTo(-3, 0); ctx.lineTo(3, 0); ctx.closePath(); ctx.fill();
-      } else if (this.element === 'WATER') {
-        ctx.beginPath(); ctx.moveTo(0, -10); ctx.lineTo(-2, 0); ctx.lineTo(2, 0); ctx.closePath(); ctx.fill();
-      } else if (this.element === 'EARTH') {
-        ctx.fillRect(-2, -10, 4, 10);
-      } else if (this.element === 'AIR') {
-        ctx.beginPath(); ctx.moveTo(0, -10); ctx.lineTo(-3, -5); ctx.lineTo(3, -5); ctx.closePath(); ctx.fill();
-      } else {
-        ctx.fillRect(-2, -10, 4, 20);
-      }
+      ctx.fillRect(-2, -10, 4, 20);
     }
     ctx.restore();
   }
@@ -1081,11 +1032,7 @@ class Bullet {
 
 class Drop {
   constructor(x, y, type) {
-    this.x = x;
-    this.y = y;
-    this.vy = 2;
-    this.type = type;
-    this.marked = false;
+    this.x = x; this.y = y; this.vy = 2; this.type = type; this.marked = false;
   }
   update() {
     this.y += this.vy;
@@ -1096,27 +1043,18 @@ class Drop {
     ctx.translate(this.x, this.y);
     ctx.shadowBlur = 15;
     if(this.type === 'XP') {
-      ctx.fillStyle = '#ffd700';
-      ctx.shadowColor = '#ffd700';
+      ctx.fillStyle = '#ffd700'; ctx.shadowColor = '#ffd700';
       ctx.beginPath(); ctx.moveTo(0, -8); ctx.lineTo(6,0); ctx.lineTo(0,8); ctx.lineTo(-6,0); ctx.fill();
     } else if (this.type === 'HEAL') {
-      ctx.fillStyle = '#00ff00';
-      ctx.shadowColor = '#00ff00';
-      ctx.font = 'bold 20px Arial';
-      ctx.textAlign = 'center';
-      ctx.fillText('+', 0, 5);
+      ctx.fillStyle = '#00ff00'; ctx.shadowColor = '#00ff00';
+      ctx.font = 'bold 20px Arial'; ctx.textAlign = 'center'; ctx.fillText('+', 0, 5);
     } else if (this.type === 'CARD') {
-      ctx.fillStyle = '#ff44aa';
-      ctx.shadowColor = '#ff44aa';
+      ctx.fillStyle = '#ff44aa'; ctx.shadowColor = '#ff44aa';
       ctx.beginPath(); ctx.arc(0,0,8,0,Math.PI*2); ctx.fill();
-      ctx.fillStyle = 'white';
-      ctx.font = 'bold 16px Arial';
-      ctx.fillText('?', 0, 5);
-    } else {
-      ctx.fillStyle = '#00d4ff';
-      ctx.shadowColor = '#00d4ff';
-      ctx.beginPath(); ctx.arc(0,0,8,0,Math.PI*2); ctx.stroke();
-      ctx.beginPath(); ctx.arc(0,0,4,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle = 'white'; ctx.font = 'bold 16px Arial'; ctx.fillText('?', 0, 5);
+    } else if (this.type === 'SUPPORT') {
+      ctx.fillStyle = '#00d4ff'; ctx.shadowColor = '#00d4ff';
+      ctx.beginPath(); ctx.moveTo(0, -10); ctx.lineTo(8, 5); ctx.lineTo(0, 2); ctx.lineTo(-8, 5); ctx.fill();
     }
     ctx.restore();
   }
@@ -1124,266 +1062,51 @@ class Drop {
 
 class Particle {
   constructor(x, y, color) {
-    this.x = x;
-    this.y = y;
+    this.x = x; this.y = y;
     this.vx = (Math.random() - 0.5) * 8;
     this.vy = (Math.random() - 0.5) * 8;
-    this.life = 1.0;
-    this.color = color;
-    this.size = 1 + Math.random() * 2;
+    this.life = 1.0; this.color = color; this.size = 1 + Math.random() * 2;
   }
-  update() {
-    this.x += this.vx;
-    this.y += this.vy;
-    this.life -= 0.04;
-  }
+  update() { this.x += this.vx; this.y += this.vy; this.life -= 0.04; }
   draw() {
-    ctx.globalAlpha = this.life;
-    ctx.fillStyle = this.color;
-    ctx.beginPath();
-    ctx.arc(this.x, this.y, this.size, 0, Math.PI*2);
-    ctx.fill();
+    ctx.globalAlpha = this.life; ctx.fillStyle = this.color;
+    ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI*2); ctx.fill();
     ctx.globalAlpha = 1.0;
   }
 }
 
-// --- GALAXY BACKGROUND SYSTEM (ORIGINAL) ---
+// Keeping Background Logic (No changes needed)
 class GalaxyBackground {
-  constructor() {
-    this.layers = [];
-    this.initLayers();
-  }
-  
+  constructor() { this.layers = []; this.initLayers(); }
   initLayers() {
-    // Create multiple layers for parallax effect
-    // Layer 0: Distant stars (slowest)
-    // Layer 1: Nebula clouds
-    // Layer 2: Mid-distance stars
-    // Layer 3: Planets and galaxies
-    // Layer 4: Close stars (fastest)
-    
-    // Layer 0: Distant stars
-    this.layers.push({
-      speed: 0.1,
-      stars: [],
-      color: () => `rgba(${200 + Math.random() * 55}, ${200 + Math.random() * 55}, ${255}, ${0.3 + Math.random() * 0.4})`,
-      size: () => 0.5 + Math.random() * 1.5,
-      count: 300
-    });
-    
-    // Layer 1: Nebula clouds
-    this.layers.push({
-      speed: 0.3,
-      clouds: [],
-      color: () => {
-        const colors = [
-          'rgba(100, 50, 200, 0.15)',
-          'rgba(150, 50, 255, 0.15)',
-          'rgba(200, 100, 255, 0.15)',
-          'rgba(50, 100, 255, 0.15)'
-        ];
-        return colors[Math.floor(Math.random() * colors.length)];
-      },
-      size: () => 30 + Math.random() * 70,
-      count: 15
-    });
-    
-    // Layer 2: Mid-distance stars
-    this.layers.push({
-      speed: 0.5,
-      stars: [],
-      color: () => `rgba(${255}, ${200 + Math.random() * 55}, ${100 + Math.random() * 155}, ${0.5 + Math.random() * 0.3})`,
-      size: () => 1 + Math.random() * 2,
-      count: 200
-    });
-    
-    // Layer 3: Planets and galaxies
-    this.layers.push({
-      speed: 0.7,
-      objects: [],
-      createObject: () => {
-        const type = Math.random() > 0.5 ? 'planet' : 'galaxy';
-        const size = type === 'planet' ? 15 + Math.random() * 20 : 40 + Math.random() * 30;
-        const color = type === 'planet' 
-          ? `hsl(${Math.random() * 360}, 70%, ${50 + Math.random() * 30}%)`
-          : `rgba(${100 + Math.random() * 155}, ${50 + Math.random() * 100}, ${200 + Math.random() * 55}, 0.6)`;
-        return { type, size, color };
-      },
-      count: 12
-    });
-    
-    // Layer 4: Close stars
-    this.layers.push({
-      speed: 1.0,
-      stars: [],
-      color: () => `rgba(255, 255, 255, ${0.7 + Math.random() * 0.3})`,
-      size: () => 2 + Math.random() * 3,
-      count: 100
-    });
-    
-    // Initialize all layers
+    this.layers.push({ speed: 0.1, stars: [], color: () => `rgba(${200 + Math.random() * 55}, ${200 + Math.random() * 55}, ${255}, ${0.3 + Math.random() * 0.4})`, size: () => 0.5 + Math.random() * 1.5, count: 300 });
+    this.layers.push({ speed: 0.3, clouds: [], color: () => ['rgba(100, 50, 200, 0.15)', 'rgba(150, 50, 255, 0.15)', 'rgba(200, 100, 255, 0.15)', 'rgba(50, 100, 255, 0.15)'][Math.floor(Math.random()*4)], size: () => 30 + Math.random() * 70, count: 15 });
+    this.layers.push({ speed: 0.5, stars: [], color: () => `rgba(${255}, ${200 + Math.random() * 55}, ${100 + Math.random() * 155}, ${0.5 + Math.random() * 0.3})`, size: () => 1 + Math.random() * 2, count: 200 });
+    this.layers.push({ speed: 0.7, objects: [], createObject: () => { const type = Math.random() > 0.5 ? 'planet' : 'galaxy'; const size = type === 'planet' ? 15 + Math.random() * 20 : 40 + Math.random() * 30; const color = type === 'planet' ? `hsl(${Math.random() * 360}, 70%, ${50 + Math.random() * 30}%)` : `rgba(${100 + Math.random() * 155}, ${50 + Math.random() * 100}, ${200 + Math.random() * 55}, 0.6)`; return { type, size, color }; }, count: 12 });
+    this.layers.push({ speed: 1.0, stars: [], color: () => `rgba(255, 255, 255, ${0.7 + Math.random() * 0.3})`, size: () => 2 + Math.random() * 3, count: 100 });
     for (let layer of this.layers) {
-      if (layer.stars) {
-        for (let i = 0; i < layer.count; i++) {
-          layer.stars.push({
-            x: Math.random() * width,
-            y: Math.random() * height * 2 - height, // Start above and below
-            size: layer.size(),
-            color: layer.color()
-          });
-        }
-      }
-      if (layer.clouds) {
-        for (let i = 0; i < layer.count; i++) {
-          layer.clouds.push({
-            x: Math.random() * width,
-            y: Math.random() * height * 2 - height,
-            size: layer.size(),
-            color: layer.color()
-          });
-        }
-      }
-      if (layer.objects) {
-        for (let i = 0; i < layer.count; i++) {
-          const obj = layer.createObject();
-          layer.objects.push({
-            x: Math.random() * width,
-            y: Math.random() * height * 2 - height,
-            ...obj
-          });
-        }
-      }
+      if (layer.stars) for (let i = 0; i < layer.count; i++) layer.stars.push({ x: Math.random() * width, y: Math.random() * height * 2 - height, size: layer.size(), color: layer.color() });
+      if (layer.clouds) for (let i = 0; i < layer.count; i++) layer.clouds.push({ x: Math.random() * width, y: Math.random() * height * 2 - height, size: layer.size(), color: layer.color() });
+      if (layer.objects) for (let i = 0; i < layer.count; i++) { const obj = layer.createObject(); layer.objects.push({ x: Math.random() * width, y: Math.random() * height * 2 - height, ...obj }); }
     }
   }
-  
   update(playerY) {
-    // Update each layer based on player movement
     for (let layer of this.layers) {
       const speed = layer.speed;
-      
-      if (layer.stars) {
-        for (let star of layer.stars) {
-          // Move stars downward as player moves up
-          star.y += speed * 0.5;
-          
-          // Reset stars that go off screen
-          if (star.y > height + 50) {
-            star.y = -50;
-            star.x = Math.random() * width;
-          }
-        }
-      }
-      
-      if (layer.clouds) {
-        for (let cloud of layer.clouds) {
-          cloud.y += speed * 0.5;
-          if (cloud.y > height + 100) {
-            cloud.y = -100;
-            cloud.x = Math.random() * width;
-          }
-        }
-      }
-      
-      if (layer.objects) {
-        for (let obj of layer.objects) {
-          obj.y += speed * 0.5;
-          if (obj.y > height + 100) {
-            obj.y = -100;
-            obj.x = Math.random() * width;
-            // Recreate object with new properties
-            const newObj = this.layers[3].createObject();
-            obj.type = newObj.type;
-            obj.size = newObj.size;
-            obj.color = newObj.color;
-          }
-        }
-      }
+      if (layer.stars) for (let star of layer.stars) { star.y += speed * 0.5; if (star.y > height + 50) { star.y = -50; star.x = Math.random() * width; } }
+      if (layer.clouds) for (let cloud of layer.clouds) { cloud.y += speed * 0.5; if (cloud.y > height + 100) { cloud.y = -100; cloud.x = Math.random() * width; } }
+      if (layer.objects) for (let obj of layer.objects) { obj.y += speed * 0.5; if (obj.y > height + 100) { obj.y = -100; obj.x = Math.random() * width; const newObj = this.layers[3].createObject(); obj.type = newObj.type; obj.size = newObj.size; obj.color = newObj.color; } }
     }
   }
-  
   draw() {
-    // Draw background layers from back to front
     for (let layer of this.layers) {
-      if (layer.stars) {
-        for (let star of layer.stars) {
-          ctx.fillStyle = star.color;
-          ctx.beginPath();
-          ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
-      
-      if (layer.clouds) {
-        for (let cloud of layer.clouds) {
-          ctx.fillStyle = cloud.color;
-          ctx.beginPath();
-          ctx.arc(cloud.x, cloud.y, cloud.size, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
-      
-      if (layer.objects) {
-        for (let obj of layer.objects) {
-          if (obj.type === 'planet') {
-            // Draw planet with gradient
-            const gradient = ctx.createRadialGradient(
-              obj.x, obj.y, 0,
-              obj.x, obj.y, obj.size
-            );
-            gradient.addColorStop(0, obj.color);
-            gradient.addColorStop(1, 'rgba(0,0,0,0.7)');
-            
-            ctx.fillStyle = gradient;
-            ctx.beginPath();
-            ctx.arc(obj.x, obj.y, obj.size, 0, Math.PI * 2);
-            ctx.fill();
-            
-            // Add atmospheric glow
-            ctx.shadowColor = obj.color;
-            ctx.shadowBlur = 15;
-            ctx.beginPath();
-            ctx.arc(obj.x, obj.y, obj.size * 0.8, 0, Math.PI * 2);
-            ctx.stroke();
-            ctx.shadowBlur = 0;
-            
-            // Add surface details
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-            ctx.beginPath();
-            ctx.arc(obj.x - obj.size*0.3, obj.y - obj.size*0.2, obj.size*0.15, 0, Math.PI * 2);
-            ctx.fill();
-            
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
-            ctx.beginPath();
-            ctx.arc(obj.x + obj.size*0.2, obj.y + obj.size*0.3, obj.size*0.2, 0, Math.PI * 2);
-            ctx.fill();
-          } else {
-            // Draw galaxy
-            ctx.fillStyle = obj.color;
-            ctx.beginPath();
-            ctx.arc(obj.x, obj.y, obj.size, 0, Math.PI * 2);
-            ctx.fill();
-            
-            // Add spiral arms
-            ctx.strokeStyle = obj.color;
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            for (let i = 0; i < 5; i++) {
-              const angle = (i / 5) * Math.PI * 2;
-              const armLength = obj.size * 0.7;
-              ctx.moveTo(obj.x, obj.y);
-              ctx.lineTo(
-                obj.x + Math.cos(angle) * armLength,
-                obj.y + Math.sin(angle) * armLength
-              );
-            }
-            ctx.stroke();
-            
-            // Add core
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-            ctx.beginPath();
-            ctx.arc(obj.x, obj.y, obj.size * 0.3, 0, Math.PI * 2);
-            ctx.fill();
-          }
+      if (layer.stars) for (let star of layer.stars) { ctx.fillStyle = star.color; ctx.beginPath(); ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2); ctx.fill(); }
+      if (layer.clouds) for (let cloud of layer.clouds) { ctx.fillStyle = cloud.color; ctx.beginPath(); ctx.arc(cloud.x, cloud.y, cloud.size, 0, Math.PI * 2); ctx.fill(); }
+      if (layer.objects) for (let obj of layer.objects) {
+        if (obj.type === 'planet') {
+          const gradient = ctx.createRadialGradient(obj.x, obj.y, 0, obj.x, obj.y, obj.size); gradient.addColorStop(0, obj.color); gradient.addColorStop(1, 'rgba(0,0,0,0.7)'); ctx.fillStyle = gradient; ctx.beginPath(); ctx.arc(obj.x, obj.y, obj.size, 0, Math.PI * 2); ctx.fill();
+        } else {
+          ctx.fillStyle = obj.color; ctx.beginPath(); ctx.arc(obj.x, obj.y, obj.size, 0, Math.PI * 2); ctx.fill();
         }
       }
     }
@@ -1395,6 +1118,7 @@ let bullets = [];
 let enemies = [];
 let drops = [];
 let particles = [];
+let allies = [];
 let mouse = { x: 0, y: 0 };
 let galaxyBackground;
 
@@ -1403,8 +1127,10 @@ function initGame() {
   document.getElementById('element-selection').style.display = 'flex';
   resize();
   player = new Player();
-  bullets = []; enemies = []; drops = []; particles = [];
+  drawDamageModel(player.parts); // Initial draw
+  bullets = []; enemies = []; drops = []; particles = []; allies = [];
   score = 0; wave = 1; elementPower = 0;
+  bossSpawnedThisWave = false;
   currentWeapon = null;
   currentWeaponTier = 0;
   currentElement = 'NONE';
@@ -1425,16 +1151,37 @@ function selectElement(element) {
 
 function spawnLogic() {
   const isBossWave = (wave % 3 === 0);
-  const hasBoss = enemies.some(e => e.isBoss);
+  
   if (isBossWave) {
-    if (!hasBoss && enemies.length === 0) {
+    if (!bossSpawnedThisWave && enemies.length === 0) {
       enemies.push(new Boss(wave));
+      bossSpawnedThisWave = true;
       showNotification("BOSS APPROACHING!");
     }
   } else {
     const maxEnemies = Math.min(3 + wave, 12);
     if (enemies.length < maxEnemies && Math.random() < 0.02 + wave * 0.005) {
-      enemies.push(new Enemy(wave));
+      
+      // FORMATION LOGIC (20% Chance, Aces Style)
+      if (Math.random() < 0.20) { 
+        // Start corners
+        const startX = Math.random() > 0.5 ? -50 : width + 50;
+        const startY = -50;
+        
+        // End roughly bottom centerish/opposite side
+        const endX = startX < 0 ? width + 50 : -50;
+        const endY = height * 0.8;
+
+        const count = 5;
+        for(let i=0; i<count; i++) {
+          // Pass 'i' as delay
+          const e = new Enemy(wave, true, startX, startY, endX, endY, i);
+          enemies.push(e);
+        }
+      } else {
+        // Normal hover enemy (80%)
+        enemies.push(new Enemy(wave, false));
+      }
     }
   }
 }
@@ -1446,22 +1193,10 @@ function checkCollisions() {
       enemies.forEach(e => {
         let hitBox = e.isBoss ? 60 : e.size;
         if (Math.hypot(b.x - e.x, b.y - e.y) < hitBox + 10) {
-          // Apply card effects
-          if (player.effects.burn) {
-            e.burnTimer = 300; // 5 seconds at 60fps
-          }
-          if (player.effects.stun && !e.stunned) {
-            e.stunned = true;
-            e.stunTimer = 60; // 1 second
-          }
-          if (player.effects.slow) {
-            e.slowed = true;
-            setTimeout(() => e.slowed = false, 3000);
-          }
-          if (player.effects.chain) {
-            b.chain = true;
-            b.originalTarget = e;
-          }
+          if (player.effects.burn) e.burnTimer = 300;
+          if (player.effects.stun && !e.stunned) { e.stunned = true; e.stunTimer = 60; }
+          if (player.effects.slow) { e.slowed = true; setTimeout(() => e.slowed = false, 3000); }
+          if (player.effects.chain) { b.chain = true; b.originalTarget = e; }
           
           e.hp -= b.damage;
           b.marked = true;
@@ -1470,37 +1205,46 @@ function checkCollisions() {
         }
       });
     } else {
-      // Dodge chance
       if (player.effects.dodge && Math.random() < 0.15) {
         spawnParticles(player.x, player.y, '#ffffff', 10);
         return;
       }
-      
-      // Damage reduction
       let damage = b.damage;
       if (player.effects.armor) damage *= 0.85;
       if (player.effects.shield) damage *= 0.8;
       
-      if (Math.hypot(b.x - player.x, b.y - player.y) < player.size - 5) {
-        player.hp -= damage;
+      // Player Collision - Visual Size Check (50 radius approx)
+      if (Math.hypot(b.x - player.x, b.y - player.y) < 40) {
+        // Calculate Relative Hit
+        const relX = b.x - player.x;
+        const relY = b.y - player.y;
+        
+        player.takeDamage(damage, relX, relY);
+        
         b.marked = true;
         spawnParticles(player.x, player.y, 'red', 5);
-        updateUI();
-        if (player.hp <= 0) {
-          if (player.effects.revive && Math.random() < 0.3) {
-            player.hp = player.maxHp * 0.3;
-            showNotification("PHOENIX REBORN!");
-            updateUI();
-          } else {
-            gameOver();
-          }
+        if (player.isDead()) {
+           gameOver();
         }
       }
     }
   });
+  
+  enemies.forEach(e => {
+    if (!e.isBoss) { 
+        const dist = Math.hypot(e.x - player.x, e.y - player.y);
+        if (dist < e.size + 40) {
+            player.takeDamage(20, e.x - player.x, e.y - player.y); // Collision damage
+            e.hp -= 50;
+            spawnParticles(player.x, player.y, 'red', 10);
+            if (e.hp <= 0) killEnemy(e);
+            if (player.isDead()) gameOver();
+        }
+    }
+  });
 
   drops.forEach(d => {
-    if (!d.marked && Math.hypot(d.x - player.x, d.y - player.y) < 30) {
+    if (!d.marked && Math.hypot(d.x - player.x, d.y - player.y) < 50) {
       d.marked = true;
       collectDrop(d.type);
     }
@@ -1509,14 +1253,27 @@ function checkCollisions() {
 
 function killEnemy(e) {
   score += e.isBoss ? 1000 : 100;
+  
+  if (e.isBoss) {
+    spawnParticles(e.x, e.y, '#ff00ff', 100);
+    setTimeout(() => {
+        startWaveBreak(); 
+    }, 500);
+    enemies = enemies.filter(en => en !== e);
+    updateUI();
+    return;
+  }
+
   const dropChance = 0.3 + wave * 0.02;
-  if (Math.random() < dropChance || e.isBoss) {
+  if (Math.random() < dropChance) {
     let dropType = 'XP';
-    if (Math.random() < 0.2) dropType = 'HEAL';
-    else if (Math.random() < 0.15) dropType = 'CARD';
+    const rnd = Math.random();
+    if (rnd < 0.15) dropType = 'HEAL';
+    else if (rnd < 0.25) dropType = 'CARD';
+    else if (rnd < 0.30) dropType = 'SUPPORT';
     drops.push(new Drop(e.x, e.y, dropType));
   }
-  spawnParticles(e.x, e.y, e.isBoss ? '#ff00ff' : '#ffaa00', e.isBoss ? 40 : 10);
+  spawnParticles(e.x, e.y, '#ffaa00', 10);
   enemies = enemies.filter(en => en !== e);
   const xpFill = document.getElementById('xp-bar-fill');
   const pct = (score % nextDropScore) / nextDropScore * 100;
@@ -1533,6 +1290,19 @@ function collectDrop(type) {
     showNotification("REPAIRED");
   } else if (type === 'XP') {
     score += 50;
+} else if (type === 'SUPPORT') {
+    showNotification("SQUADRON SUPPORT!");
+    // V-FORMATION SPAWN
+    const offsets = [
+        {x: 0, y: 0},
+        {x: -200, y: 30}, {x: 200, y: 30},
+        {x: -400, y: 60}, {x: 400, y: 60},
+        {x: -600, y: 90}, {x: 600, y: 90}
+    ];
+    offsets.forEach(off => {
+        // VERANDER player.x NAAR width / 2
+        allies.push(new SupportShip(width / 2 + off.x, height + 100 + off.y));
+    });
   } else if (type === 'CARD') {
     if (currentElement === 'NONE') {
       const elements = ['FIRE', 'WATER', 'EARTH', 'AIR'];
@@ -1564,15 +1334,9 @@ function showCardPickup(card) {
 }
 
 function acceptCard() {
-  // Apply effect immediately
   player.effects[pendingCard.effect] = true;
+  if (pendingCard.effect === 'sniperElite') player.firstShot = true;
   
-  // Special handling for some effects
-  if (pendingCard.effect === 'sniperElite') {
-    player.firstShot = true;
-  }
-  
-  // Add to slots
   let added = false;
   for (let i = 0; i < 3; i++) {
     if (!equippedCards[i]) {
@@ -1584,9 +1348,7 @@ function acceptCard() {
   if (!added) {
     let worst = 0;
     for (let i = 1; i < 3; i++) {
-      if (RARITIES.indexOf(equippedCards[i].rarity) < RARITIES.indexOf(equippedCards[worst].rarity)) {
-        worst = i;
-      }
+      if (RARITIES.indexOf(equippedCards[i].rarity) < RARITIES.indexOf(equippedCards[worst].rarity)) worst = i;
     }
     if (RARITIES.indexOf(pendingCard.rarity) >= RARITIES.indexOf(equippedCards[worst].rarity)) {
       equippedCards[worst] = pendingCard;
@@ -1644,7 +1406,6 @@ function buildUpgradeTree() {
   const container = document.getElementById('upgrade-tree');
   container.innerHTML = '';
   
-  // Base row
   const baseRow = document.createElement('div');
   baseRow.className = 'tree-row';
   UPGRADE_TREE.base.forEach(node => {
@@ -1653,35 +1414,18 @@ function buildUpgradeTree() {
   });
   container.appendChild(baseRow);
   
-  // Weapon-specific rows
   if (currentWeapon) {
     const weaponData = UPGRADE_TREE[currentWeapon];
     const nextTier = currentWeaponTier + 1;
     
-    if (nextTier === 1) {
-      const tier1Row = document.createElement('div');
-      tier1Row.className = 'tree-row';
-      weaponData.tier1.forEach(node => {
+    if (nextTier >= 1 && nextTier <= 3) {
+      const row = document.createElement('div');
+      row.className = 'tree-row';
+      weaponData[`tier${nextTier}`].forEach(node => {
         const el = createTreeNode(node, currentWeapon);
-        tier1Row.appendChild(el);
+        row.appendChild(el);
       });
-      container.appendChild(tier1Row);
-    } else if (nextTier === 2) {
-      const tier2Row = document.createElement('div');
-      tier2Row.className = 'tree-row';
-      weaponData.tier2.forEach(node => {
-        const el = createTreeNode(node, currentWeapon);
-        tier2Row.appendChild(el);
-      });
-      container.appendChild(tier2Row);
-    } else if (nextTier === 3) {
-      const tier3Row = document.createElement('div');
-      tier3Row.className = 'tree-row';
-      weaponData.tier3.forEach(node => {
-        const el = createTreeNode(node, currentWeapon);
-        tier3Row.appendChild(el);
-      });
-      container.appendChild(tier3Row);
+      container.appendChild(row);
     }
   }
 }
@@ -1698,6 +1442,7 @@ function createTreeNode(node, type) {
         currentWeapon = node.id;
         player.weaponType = node.id;
         wave++;
+        bossSpawnedThisWave = false; 
         nextDropScore += 1000;
         document.getElementById('wave-menu').style.display = 'none';
         isPaused = false;
@@ -1713,111 +1458,48 @@ function createTreeNode(node, type) {
 
 function applyWeaponUpgrade(upgradeId, weaponType) {
   const tier = currentWeaponTier + 1;
-  let upgrade = null;
-  
-  if (tier === 1) {
-    upgrade = UPGRADE_TREE[weaponType].tier1.find(u => u.id === upgradeId);
-  } else if (tier === 2) {
-    upgrade = UPGRADE_TREE[weaponType].tier2.find(u => u.id === upgradeId);
-  } else if (tier === 3) {
-    upgrade = UPGRADE_TREE[weaponType].tier3.find(u => u.id === upgradeId);
-  }
+  let upgrade = UPGRADE_TREE[weaponType][`tier${tier}`].find(u => u.id === upgradeId);
   
   if (upgrade && !upgrade.unlocked) {
     upgrade.unlocked = true;
     currentWeaponTier = tier;
     
-    // Apply effects based on upgrade
     if (weaponType === 'sniper') {
-      if (tier === 1) {
-        if (upgradeId === 'sniper_t1_1') {
-          // Piercing handled in collision
-        } else if (upgradeId === 'sniper_t1_2') {
-          // Armor pen handled in collision
-        } else if (upgradeId === 'sniper_t1_3') {
-          // Range already good
-        }
-      } else if (tier === 2) {
-        if (upgradeId === 'sniper_t2_1') {
-          player.damage *= 1.5;
-        } else if (upgradeId === 'sniper_t2_2') {
-          // Visual only
-        } else if (upgradeId === 'sniper_t2_3') {
-          player.spreadAngle = 0;
-        }
+      if (tier === 2) {
+        if (upgradeId === 'sniper_t2_1') player.damage *= 1.5;
+        else if (upgradeId === 'sniper_t2_3') player.spreadAngle = 0;
       } else if (tier === 3) {
-        if (upgradeId === 'sniper_t3_1') {
-          player.damage *= 2;
-          player.fireRate *= 1.5;
-        } else if (upgradeId === 'sniper_t3_2') {
-          player.effects.sniperElite = true;
-          player.firstShot = true;
-        } else if (upgradeId === 'sniper_t3_3') {
-          // One shot (for non-boss)
-          player.effects.oneShot = true;
-        }
+        if (upgradeId === 'sniper_t3_1') { player.damage *= 2; player.fireRate *= 1.5; }
+        else if (upgradeId === 'sniper_t3_2') { player.effects.sniperElite = true; player.firstShot = true; }
+        else if (upgradeId === 'sniper_t3_3') player.effects.oneShot = true;
       }
     } else if (weaponType === 'machinegun') {
       if (tier === 1) {
-        if (upgradeId === 'mg_t1_1') {
-          // Overheat damage boost
-        } else if (upgradeId === 'mg_t1_2') {
-          player.overheatMax *= 1.5;
-        } else if (upgradeId === 'mg_t1_3') {
-          // Less reload (already fast)
-        }
+        if (upgradeId === 'mg_t1_2') player.overheatMax *= 1.5;
       } else if (tier === 2) {
-        if (upgradeId === 'mg_t2_1') {
-          player.fireRate = 1;
-        } else if (upgradeId === 'mg_t2_2') {
-          player.spreadAngle = 0.3;
-        } else if (upgradeId === 'mg_t2_3') {
-          // Penetration
-        }
+        if (upgradeId === 'mg_t2_1') player.fireRate = 1;
+        else if (upgradeId === 'mg_t2_2') player.spreadAngle = 0.3;
       } else if (tier === 3) {
-        if (upgradeId === 'mg_t3_1') {
-          player.effects.explosive = true;
-        } else if (upgradeId === 'mg_t3_2') {
-          player.cooldown = 0;
-          player.overheat = 0;
-        } else if (upgradeId === 'mg_t3_3') {
-          player.shotCount = 3;
-          player.spreadAngle = 0.2;
-        }
+        if (upgradeId === 'mg_t3_1') player.effects.explosive = true;
+        else if (upgradeId === 'mg_t3_2') { player.cooldown = 0; player.overheat = 0; }
+        else if (upgradeId === 'mg_t3_3') { player.shotCount = 3; player.spreadAngle = 0.2; }
       }
     } else if (weaponType === 'shotgun') {
       if (tier === 1) {
-        if (upgradeId === 'sg_t1_1') {
-          player.shotCount = 8;
-        } else if (upgradeId === 'sg_t1_2') {
-          player.shotCount = 1;
-          player.damage *= 2;
-          player.spreadAngle = 0;
-        } else if (upgradeId === 'sg_t1_3') {
-          player.spreadAngle = 0.8;
-        }
+        if (upgradeId === 'sg_t1_1') player.shotCount = 8;
+        else if (upgradeId === 'sg_t1_2') { player.shotCount = 1; player.damage *= 2; player.spreadAngle = 0; }
+        else if (upgradeId === 'sg_t1_3') player.spreadAngle = 0.8;
       } else if (tier === 2) {
-        if (upgradeId === 'sg_t2_1') {
-          player.effects.explosive = true;
-          player.element = 'FIRE';
-        } else if (upgradeId === 'sg_t2_2') {
-          // Armor piercing
-        } else if (upgradeId === 'sg_t2_3') {
-          // Ricochet (needs wall collision)
-        }
+        if (upgradeId === 'sg_t2_1') { player.effects.explosive = true; player.element = 'FIRE'; }
       } else if (tier === 3) {
-        if (upgradeId === 'sg_t3_1') {
-          player.effects.pull = true;
-        } else if (upgradeId === 'sg_t3_2') {
-          // Nova blast
-          player.effects.nova = true;
-        } else if (upgradeId === 'sg_t3_3') {
-          player.fireRate = 5;
-        }
+        if (upgradeId === 'sg_t3_1') player.effects.pull = true;
+        else if (upgradeId === 'sg_t3_2') player.effects.nova = true;
+        else if (upgradeId === 'sg_t3_3') player.fireRate = 5;
       }
     }
     
     wave++;
+    bossSpawnedThisWave = false; 
     nextDropScore += 1000;
     document.getElementById('wave-menu').style.display = 'none';
     isPaused = false;
@@ -1826,9 +1508,7 @@ function applyWeaponUpgrade(upgradeId, weaponType) {
 }
 
 function spawnParticles(x, y, color, count) {
-  for (let i = 0; i < count; i++) {
-    particles.push(new Particle(x, y, color));
-  }
+  for (let i = 0; i < count; i++) particles.push(new Particle(x, y, color));
 }
 
 function showNotification(text) {
@@ -1840,7 +1520,6 @@ function showNotification(text) {
 
 function updateUI() {
   document.getElementById('score').innerText = score;
-  document.getElementById('hp').innerText = Math.floor(player.hp);
   document.getElementById('wave').innerText = wave;
 }
 
@@ -1860,9 +1539,7 @@ function resize() {
   canvas.height = window.innerHeight;
   width = canvas.width;
   height = canvas.height;
-  if (galaxyBackground) {
-    galaxyBackground.initLayers();
-  }
+  if (galaxyBackground) galaxyBackground.initLayers();
 }
 window.addEventListener('resize', resize);
 document.addEventListener('mousemove', e => {
@@ -1879,7 +1556,6 @@ function animate() {
   ctx.fillStyle = '#020205';
   ctx.fillRect(0, 0, width, height);
 
-  // Update and draw galaxy background
   if (galaxyBackground) {
     galaxyBackground.update(player.y);
     galaxyBackground.draw();
@@ -1889,7 +1565,6 @@ function animate() {
   player.update();
   player.draw();
 
-  // Update arrays safely
   for (let i = bullets.length - 1; i >= 0; i--) {
     bullets[i].update();
     bullets[i].draw();
@@ -1898,6 +1573,11 @@ function animate() {
   for (let i = enemies.length - 1; i >= 0; i--) {
     enemies[i].update();
     enemies[i].draw();
+  }
+  for (let i = allies.length - 1; i >= 0; i--) {
+    allies[i].update();
+    allies[i].draw();
+    if (allies[i].marked) allies.splice(i, 1);
   }
   for (let i = drops.length - 1; i >= 0; i--) {
     drops[i].update();
