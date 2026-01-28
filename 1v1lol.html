@@ -2,7 +2,7 @@
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
-<title>ACES: Galaxy Edition</title>
+<title>ACES: Galaxy Edition (Remastered)</title>
 <style>
 body {
   margin: 0;
@@ -465,19 +465,18 @@ class Player {
   constructor() {
     this.x = window.innerWidth / 2;
     this.y = window.innerHeight - 100;
-    // PLAYER SIZE INCREASED TO 50 (Was 25)
     this.size = 50; 
     
-    // NEW: COMPONENT HEALTH SYSTEM
+    // BALANCE: Dubbel HP voor makkelijker spel
     this.parts = {
-        body: { hp: 100, max: 100 },
-        leftWing: { hp: 70, max: 70 }, // Wings weaker
-        rightWing: { hp: 70, max: 70 },
-        engine: { hp: 80, max: 80 }
+        body: { hp: 200, max: 200 },
+        leftWing: { hp: 140, max: 140 },
+        rightWing: { hp: 140, max: 140 },
+        engine: { hp: 160, max: 160 }
     };
     
     this.speed = 0.3;
-    this.damage = 10;
+    this.damage = 15; // Iets hogere base damage
     this.fireRate = 8;
     this.element = 'NONE';
     this.weaponType = 'base';
@@ -491,15 +490,11 @@ class Player {
   }
   
   isDead() {
-      // Game Over only if ALL parts are dead
       return this.parts.body.hp <= 0 && this.parts.leftWing.hp <= 0 && 
              this.parts.rightWing.hp <= 0 && this.parts.engine.hp <= 0;
   }
 
   takeDamage(amount, relX, relY) {
-      // Determine which part was hit based on relative bullet position
-      // Ship is approx 50x50 centered at 0,0
-      
       let targetPart = 'body';
       
       if (relY > 15) targetPart = 'engine';
@@ -507,28 +502,27 @@ class Player {
       else if (relX > 15) targetPart = 'rightWing';
       else targetPart = 'body';
 
-      // If part is already destroyed, damage transfers to body, then random
       if (this.parts[targetPart].hp <= 0) {
           if (this.parts.body.hp > 0) targetPart = 'body';
           else {
               const alive = Object.keys(this.parts).filter(k => this.parts[k].hp > 0);
               if (alive.length > 0) targetPart = alive[0];
-              else return; // All dead
+              else return; 
           }
       }
 
       this.parts[targetPart].hp -= amount;
-      drawDamageModel(this.parts); // Update HUD
+      drawDamageModel(this.parts); 
   }
 
   update() {
     let baseSpeed = 0.3;
-    let baseDamage = 10;
+    let baseDamage = 15; // Buffed
     let baseFireRate = 8;
     
-    if (this.element === 'FIRE') baseDamage *= 1.1;
+    if (this.element === 'FIRE') baseDamage *= 1.2;
     else if (this.element === 'WATER') baseFireRate *= 0.9;
-    else if (this.element === 'EARTH') { baseDamage *= 1.15; baseSpeed *= 0.9; }
+    else if (this.element === 'EARTH') { baseDamage *= 1.25; baseSpeed *= 0.9; }
     else if (this.element === 'AIR') { baseSpeed *= 1.2; baseDamage *= 0.9; baseFireRate *= 1.1; }
     
     this.speed = baseSpeed + (this.effects.speed || 0);
@@ -544,37 +538,36 @@ class Player {
 
     // Weapon Config
     if (this.weaponType === 'sniper') {
-      this.damage = 45; this.fireRate = 45; this.shotCount = 1; this.spreadAngle = 0;
+      this.damage = 60; this.fireRate = 45; this.shotCount = 1; this.spreadAngle = 0;
     } else if (this.weaponType === 'machinegun') {
-      this.damage = 7; this.fireRate = 3; this.shotCount = 1; this.spreadAngle = 0;
+      this.damage = 9; this.fireRate = 3; this.shotCount = 1; this.spreadAngle = 0;
       if (this.cooldown > 0) {
         this.cooldown--;
         if (this.cooldown <= 0) this.overheat = 0;
       }
     } else if (this.weaponType === 'shotgun') {
-      this.damage = 12; this.fireRate = 20; this.shotCount = 6; this.spreadAngle = 0.6;
+      this.damage = 18; this.fireRate = 20; this.shotCount = 6; this.spreadAngle = 0.6;
     } else {
-      this.damage = 10; this.fireRate = 8; this.shotCount = 1; this.spreadAngle = 0;
+      this.damage = 15; this.fireRate = 8; this.shotCount = 1; this.spreadAngle = 0;
     }
 
     if (this.effects.armor) this.damage *= 0.85;
     
     // Regen Effect
     if (this.effects.regen && frameCount % 60 === 0) {
-        // Repair most damaged part
         let worst = null; let minPct = 1;
         for (let k in this.parts) {
             let p = this.parts[k];
             if (p.hp > 0 && p.hp < p.max && (p.hp/p.max) < minPct) { worst = k; minPct = p.hp/p.max; }
         }
-        if (worst) this.parts[worst].hp += 1;
+        if (worst) this.parts[worst].hp += 5; // Betere regen
         drawDamageModel(this.parts);
     }
     
     if (this.effects.supernova && frameCount % 600 === 0) {
       spawnParticles(this.x, this.y, '#ff4444', 100);
       enemies.forEach(enemy => {
-        enemy.hp -= 100;
+        enemy.hp -= 200; // Buffed
         if (enemy.hp <= 0) killEnemy(enemy);
       });
     }
@@ -607,56 +600,68 @@ class Player {
   draw() {
     ctx.save();
     ctx.translate(this.x, this.y);
-    
-    // SCALE PLAYER 2x (Scale context)
     ctx.scale(2, 2);
 
-    // Engine flame
+    // Mooiere engine exhaust
     if (this.parts.engine.hp > 0) {
-        ctx.fillStyle = '#00d4ff'; ctx.shadowBlur = 10; ctx.shadowColor = '#00d4ff';
-        ctx.beginPath(); ctx.moveTo(-3, 15); ctx.lineTo(0, 25 + Math.random()*5); ctx.lineTo(3, 15); ctx.fill(); ctx.shadowBlur = 0;
+        let flameH = 20 + Math.random() * 10;
+        let grad = ctx.createLinearGradient(0, 15, 0, 15 + flameH);
+        grad.addColorStop(0, '#00ffff');
+        grad.addColorStop(1, 'rgba(0, 255, 255, 0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath(); ctx.moveTo(-4, 15); ctx.lineTo(0, 15+flameH); ctx.lineTo(4, 15); ctx.fill();
+        
+        ctx.shadowBlur = 15; ctx.shadowColor = '#00d4ff';
     }
 
-    const drawPart = (hp, max, points) => {
+    const drawVisualPart = (hp, max, points, isCenter) => {
         if (hp <= 0) {
-            ctx.fillStyle = '#111'; // Dead color
+            ctx.fillStyle = '#111'; 
             ctx.strokeStyle = '#333';
         } else {
-            // Tint based on HP
             const pct = hp/max;
-            if (pct > 0.5) ctx.fillStyle = '#ffffff'; // Normal
-            else if (pct > 0.25) ctx.fillStyle = '#ffaa00'; // Damaged
-            else ctx.fillStyle = '#ff4444'; // Critical
+            let baseColor = pct > 0.5 ? '#e0e0e0' : (pct > 0.25 ? '#aa7700' : '#880000');
             
-            // Gradient overlay
-            let grad = ctx.createLinearGradient(0, -15, 0, 15);
-            grad.addColorStop(0, ctx.fillStyle); 
-            grad.addColorStop(1, '#555');
+            // Mooie metallic gradient
+            let grad = ctx.createLinearGradient(-10, -10, 10, 10);
+            grad.addColorStop(0, '#ffffff');
+            grad.addColorStop(0.3, baseColor); 
+            grad.addColorStop(1, '#444455');
             ctx.fillStyle = grad;
+            ctx.strokeStyle = '#00d4ff'; // Neon randjes
         }
+        ctx.lineWidth = 0.5;
         ctx.beginPath();
         ctx.moveTo(points[0][0], points[0][1]);
         for(let i=1; i<points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
         ctx.closePath();
         ctx.fill();
         ctx.stroke();
+
+        // Details (Greebles)
+        if(hp > 0) {
+           ctx.fillStyle = 'rgba(0,0,0,0.3)';
+           if(isCenter) ctx.fillRect(-2, 0, 4, 8);
+           else ctx.fillRect(points[0][0], points[0][1], 2, 2);
+        }
     };
 
-    // Body
-    drawPart(this.parts.body.hp, this.parts.body.max, [[0, -15], [5, -5], [5, 10], [-5, 10], [-5, -5]]);
+    // Body (Meer detail)
+    drawVisualPart(this.parts.body.hp, this.parts.body.max, [[0, -18], [6, -6], [6, 12], [-6, 12], [-6, -6]], true);
     
-    // Left Wing
-    drawPart(this.parts.leftWing.hp, this.parts.leftWing.max, [[-5, 0], [-15, 10], [-5, 10]]);
+    // Left Wing (Sleeker)
+    drawVisualPart(this.parts.leftWing.hp, this.parts.leftWing.max, [[-6, 0], [-18, 8], [-18, 14], [-6, 12]], false);
 
-    // Right Wing
-    drawPart(this.parts.rightWing.hp, this.parts.rightWing.max, [[5, 0], [15, 10], [5, 10]]);
+    // Right Wing (Sleeker)
+    drawVisualPart(this.parts.rightWing.hp, this.parts.rightWing.max, [[6, 0], [18, 8], [18, 14], [6, 12]], false);
 
     // Element Glow
     if(this.element !== 'NONE' && this.parts.body.hp > 0) {
-      ctx.strokeStyle = ELEMENTS[this.element]; ctx.lineWidth = 1; ctx.shadowBlur = 5; ctx.shadowColor = ELEMENTS[this.element]; ctx.stroke();
+      ctx.shadowBlur = 10; ctx.shadowColor = ELEMENTS[this.element];
+      ctx.strokeStyle = ELEMENTS[this.element]; ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.shadowBlur = 0;
     }
     
-    // Machine Gun Heat
     if (this.weaponType === 'machinegun' && this.overheat > 0) {
       const pct = this.overheat / this.overheatMax;
       ctx.fillStyle = `rgba(255, ${Math.floor(255 * (1 - pct))}, 0, 0.5)`;
@@ -674,11 +679,11 @@ class SupportShip {
     this.targetY = y;
     this.targetX = x;
     this.vx = 0;
-    this.vy = -6; // Faster entry
+    this.vy = -6; 
     this.marked = false;
     this.fireTimer = 0;
     this.arrived = false;
-    this.lifeTime = 200; // 10 seconds active
+    this.lifeTime = 200;
   }
   
   update() {
@@ -689,14 +694,13 @@ class SupportShip {
         this.arrived = true;
       }
     } else {
-      this.y -= 6; // Slowly move up screen
+      this.y -= 6;
       this.fireTimer++;
       this.lifeTime--;
-      if (this.fireTimer > 10) { // High fire rate
-         // Triple shot spread
-         bullets.push(new Bullet(this.x, this.y - 30, 0, -15, '#00ffcc', false, 'NONE', false, 20));
-         bullets.push(new Bullet(this.x, this.y - 30, -3, -14, '#00ffcc', false, 'NONE', false, 20));
-         bullets.push(new Bullet(this.x, this.y - 30, 3, -14, '#00ffcc', false, 'NONE', false, 20));
+      if (this.fireTimer > 10) {
+         bullets.push(new Bullet(this.x, this.y - 30, 0, -15, '#00ffcc', false, 'NONE', false, 30));
+         bullets.push(new Bullet(this.x, this.y - 30, -3, -14, '#00ffcc', false, 'NONE', false, 30));
+         bullets.push(new Bullet(this.x, this.y - 30, 3, -14, '#00ffcc', false, 'NONE', false, 30));
          this.fireTimer = 0;
       }
     }
@@ -706,19 +710,15 @@ class SupportShip {
   draw() {
     ctx.save();
     ctx.translate(this.x, this.y);
-    // Draw better ship (Futuristic Fighter)
     ctx.shadowBlur = 15; ctx.shadowColor = '#00ffcc';
     
-    // Engine flame
     ctx.fillStyle = '#00ffff'; 
     ctx.beginPath(); ctx.moveTo(-6, 25); ctx.lineTo(0, 40 + Math.random()*10); ctx.lineTo(6, 25); ctx.fill();
 
-    // Body
     ctx.fillStyle = '#005555';
     ctx.beginPath(); ctx.moveTo(0, -30); ctx.lineTo(15, 10); ctx.lineTo(25, 25); ctx.lineTo(10, 25); ctx.lineTo(0, 15);
     ctx.lineTo(-10, 25); ctx.lineTo(-25, 25); ctx.lineTo(-15, 10); ctx.fill();
     
-    // Highlights
     ctx.fillStyle = '#00ffcc';
     ctx.fillRect(-2, -20, 4, 30);
     ctx.beginPath(); ctx.moveTo(0, -30); ctx.lineTo(5, -10); ctx.lineTo(-5, -10); ctx.fill();
@@ -736,28 +736,20 @@ class Enemy {
     this.type = Math.floor(Math.random() * (maxType + 1));
     this.isFormation = isFormation;
     
-    this.hp = 30 + (waveDiff * 10) + (this.type * 20);
+    // BALANCE: Halve vijand HP
+    this.hp = (30 + (waveDiff * 10) + (this.type * 20)) * 0.5;
     this.maxHp = this.hp;
     this.size = 25 + (this.type * 3);
     
     if (this.isFormation) {
-      // CURVE LOGIC (Bezier)
-      this.t = -0.1 * delay; // Delay start by using negative time
+      this.t = -0.1 * delay; 
       this.p0 = {x: startX, y: startY};
       this.p2 = {x: endX, y: endY};
-      
-      // Control point creates the curve. 
-      // If going corner to center-bottom, control point pulls "outward"
-      // Simplistic approach: Control point is center-ish of screen but offset
       let cx = width/2;
       let cy = height/2;
-      
-      // If start is left, pull left. If start right, pull right.
       if (startX < width/2) cx = width * 0.2; else cx = width * 0.8;
-      
       this.p1 = {x: cx, y: cy};
-      
-      this.x = -1000; this.y = -1000; // Hide until t > 0
+      this.x = -1000; this.y = -1000;
       this.rotation = 0;
     } else {
       this.x = Math.random() * (width - 60) + 30;
@@ -770,9 +762,9 @@ class Enemy {
     }
 
     this.fireTimer = Math.random() * 100;
-    this.fireInterval = Math.max(40, 100 - (waveDiff * 2) - (this.type * 5));
-    this.speed = 2 + waveDiff * 0.1;
-    this.damage = 10 + waveDiff * 2;
+    this.fireInterval = Math.max(50, 120 - (waveDiff * 2) - (this.type * 5)); // Iets trager schieten
+    this.speed = 1.5 + waveDiff * 0.1; // Iets trager vliegen
+    this.damage = (10 + waveDiff * 2) * 0.5; // BALANCE: Halve damage
     this.slowed = false;
     this.stunned = false;
     this.stunTimer = 0;
@@ -786,18 +778,17 @@ class Enemy {
     }
     if (this.burnTimer > 0) {
       this.burnTimer--;
-      this.hp -= 0.5;
+      this.hp -= 1; // Buffed burn
       if (this.hp <= 0) { killEnemy(this); return; }
     }
     
-    const speedMult = this.slowed ? 0.7 : 1;
+    const speedMult = this.slowed ? 0.5 : 1; // Buffed slow
 
     if (this.isFormation) {
-      this.t += 0.005 * speedMult; // Move along curve
+      this.t += 0.005 * speedMult; 
       
-      if (this.t < 0) return; // Wait for delay
+      if (this.t < 0) return;
 
-      // Quadratic Bezier: (1-t)^2 * P0 + 2(1-t)t * P1 + t^2 * P2
       const u = 1 - this.t;
       const tt = this.t * this.t;
       const uu = u * u;
@@ -808,17 +799,15 @@ class Enemy {
       this.x = (uu * this.p0.x) + (2 * u * this.t * this.p1.x) + (tt * this.p2.x);
       this.y = (uu * this.p0.y) + (2 * u * this.t * this.p1.y) + (tt * this.p2.y);
 
-      // Rotate towards movement
       if (this.t > 0.01) {
           this.rotation = Math.atan2(this.y - oldY, this.x - oldX) - Math.PI/2;
       }
 
-      if (this.t > 1.2) { // 1.2 to ensure it clears screen
+      if (this.t > 1.2) { 
         enemies = enemies.filter(e => e !== this);
         return;
       }
     } else {
-      // Normal Movement
       if (this.y < this.targetY) {
         this.y += this.speed * speedMult;
       } else {
@@ -835,22 +824,18 @@ class Enemy {
   }
 
   shoot() {
-    const bulletSpeed = 8;
-    // Aimed shot or forward shot depending on context
+    const bulletSpeed = 6;
     const dx = player.x - this.x;
     const dy = player.y - this.y;
     const angle = Math.atan2(dy, dx);
-    
-    // Formations just shoot "forward" relative to their rotation or down?
-    // Aces of Luftwaffe enemies usually shoot AT player even in formation
     const velX = Math.cos(angle) * bulletSpeed;
     const velY = Math.sin(angle) * bulletSpeed;
 
-    bullets.push(new Bullet(this.x, this.y + 20, velX, velY, '#ff5555', true, 'NONE', false, 10));
+    bullets.push(new Bullet(this.x, this.y + 20, velX, velY, '#ff5555', true, 'NONE', false, this.damage));
     
-    if (this.type >= 4) { // Spread for strong enemies
-         bullets.push(new Bullet(this.x, this.y, Math.cos(angle-0.3)*bulletSpeed, Math.sin(angle-0.3)*bulletSpeed, '#ff5555', true, 'NONE', false, 10));
-         bullets.push(new Bullet(this.x, this.y, Math.cos(angle+0.3)*bulletSpeed, Math.sin(angle+0.3)*bulletSpeed, '#ff5555', true, 'NONE', false, 10));
+    if (this.type >= 4) { 
+         bullets.push(new Bullet(this.x, this.y, Math.cos(angle-0.3)*bulletSpeed, Math.sin(angle-0.3)*bulletSpeed, '#ff5555', true, 'NONE', false, this.damage));
+         bullets.push(new Bullet(this.x, this.y, Math.cos(angle+0.3)*bulletSpeed, Math.sin(angle+0.3)*bulletSpeed, '#ff5555', true, 'NONE', false, this.damage));
     }
   }
 
@@ -860,26 +845,44 @@ class Enemy {
     if (this.isFormation) ctx.rotate(this.rotation); 
     else ctx.rotate(Math.PI);
     
-    const coreColor = '#222';
-    const accentColor = this.type < 3 ? '#ff3333' : (this.type < 5 ? '#ff8800' : '#aa00ff');
-    ctx.shadowBlur = 10; ctx.shadowColor = accentColor;
-
-    // Draw logic same as before but uses type
-    // ... (Simplified shapes for brevity, keeping existing aesthetic)
-    ctx.fillStyle = coreColor;
-    if(this.type === 0) { // Triangle
-         ctx.beginPath(); ctx.moveTo(0, -20); ctx.lineTo(15, 10); ctx.lineTo(-15, 10); ctx.fill();
-    } else { // Blockier
-         ctx.fillRect(-15, -15, 30, 30);
+    if(this.slowed) {
+        ctx.shadowBlur = 15; ctx.shadowColor = '#00ffff'; // Duidelijk zichtbaar slow effect
+    } else {
+        const accentColor = this.type < 3 ? '#ff3333' : (this.type < 5 ? '#ff8800' : '#aa00ff');
+        ctx.shadowBlur = 10; ctx.shadowColor = accentColor;
     }
-    ctx.fillStyle = accentColor;
-    ctx.beginPath(); ctx.arc(0, 0, 8, 0, Math.PI*2); ctx.fill();
+
+    // --- VISUELE UPGRADE ENEMY SCHEPEN ---
+    const drawEnemyShip = (color, secondary) => {
+        // Engine
+        ctx.fillStyle = '#ffaa00';
+        ctx.beginPath(); ctx.moveTo(-5, -20); ctx.lineTo(0, -35 - Math.random()*5); ctx.lineTo(5, -20); ctx.fill();
+
+        let grad = ctx.createLinearGradient(0, -20, 0, 20);
+        grad.addColorStop(0, '#333'); grad.addColorStop(1, color);
+        ctx.fillStyle = grad;
+
+        if (this.type <= 1) { // Scout (Sleek Viper)
+            ctx.beginPath(); ctx.moveTo(0, 25); ctx.lineTo(15, -15); ctx.lineTo(0, -10); ctx.lineTo(-15, -15); ctx.fill();
+            ctx.fillStyle = secondary; ctx.beginPath(); ctx.moveTo(0, 10); ctx.lineTo(5, -5); ctx.lineTo(-5, -5); ctx.fill();
+        } else if (this.type <= 3) { // Heavy (Bulkier)
+             ctx.beginPath(); ctx.moveTo(0, 30); ctx.lineTo(20, 10); ctx.lineTo(20, -20); ctx.lineTo(-20, -20); ctx.lineTo(-20, 10); ctx.fill();
+             ctx.fillStyle = secondary; ctx.fillRect(-10, -10, 20, 20);
+        } else { // Elite (Spiked)
+            ctx.beginPath(); ctx.moveTo(0, 35); ctx.lineTo(25, 0); ctx.lineTo(10, -20); ctx.lineTo(0, -10); ctx.lineTo(-10, -20); ctx.lineTo(-25, 0); ctx.fill();
+             ctx.strokeStyle = secondary; ctx.lineWidth = 2; ctx.stroke();
+        }
+    };
+
+    const mainColor = this.type < 3 ? '#880000' : (this.type < 5 ? '#884400' : '#440088');
+    const secColor = this.type < 3 ? '#ff0000' : (this.type < 5 ? '#ffaa00' : '#ff00ff');
+    drawEnemyShip(mainColor, secColor);
 
     // HP Bar
     if (this.isFormation) ctx.rotate(-this.rotation); else ctx.rotate(-Math.PI);
     if (this.hp < this.maxHp) {
-      ctx.fillStyle = '#333'; ctx.fillRect(-20, 30, 40, 4);
-      ctx.fillStyle = accentColor; ctx.fillRect(-20, 30, 40 * (this.hp/this.maxHp), 4);
+      ctx.fillStyle = '#333'; ctx.fillRect(-20, 35, 40, 4);
+      ctx.fillStyle = '#ff0000'; ctx.fillRect(-20, 35, 40 * (this.hp/this.maxHp), 4);
     }
     
     ctx.restore();
@@ -889,14 +892,14 @@ class Enemy {
 class Boss {
   constructor(waveNum) {
     this.isBoss = true;
-    this.hp = 2000 + (waveNum * 500);
+    this.hp = (2000 + (waveNum * 500)) * 0.6; // BALANCE: Veel minder HP
     this.maxHp = this.hp;
     this.size = 100;
     this.x = width / 2;
     this.y = -150;
     this.targetY = 150;
     this.fireTimer = 0;
-    this.fireInterval = Math.max(20, 50 - waveNum);
+    this.fireInterval = Math.max(30, 60 - waveNum);
     this.pattern = 0;
     this.patternTimer = 0;
     this.speed = 1 + waveNum * 0.1;
@@ -906,7 +909,7 @@ class Boss {
   update() {
     if (this.burnTimer > 0) {
       this.burnTimer--;
-      this.hp -= 0.5;
+      this.hp -= 2; // Buffed burn
       if (this.hp <= 0) { killEnemy(this); return; }
     }
     if (this.y < this.targetY) {
@@ -927,25 +930,21 @@ class Boss {
   }
 
   shoot() {
-    // INCREASED GAP BETWEEN BULLETS (More spread)
-    if (this.pattern === 0) { // Radial
+    if (this.pattern === 0) { 
       for(let i=0; i<8; i++) {
-        // Larger gaps
         let a = (i / 8) * Math.PI * 2 + (frameCount * 0.05);
-        bullets.push(new Bullet(this.x, this.y, Math.cos(a)*5, Math.sin(a)*5, '#ff55ff', true, 'NONE', false, 15));
+        bullets.push(new Bullet(this.x, this.y, Math.cos(a)*5, Math.sin(a)*5, '#ff55ff', true, 'NONE', false, 10));
       }
-    } else if (this.pattern === 1) { // Targeted spread
+    } else if (this.pattern === 1) { 
       const angle = Math.atan2(player.y - this.y, player.x - this.x);
-      // Wider angles: +/- 0.5 instead of random noise
-      bullets.push(new Bullet(this.x, this.y, Math.cos(angle)*6, Math.sin(angle)*6, '#ff55ff', true, 'NONE', false, 15));
-      bullets.push(new Bullet(this.x, this.y, Math.cos(angle-0.4)*6, Math.sin(angle-0.4)*6, '#ff55ff', true, 'NONE', false, 15));
-      bullets.push(new Bullet(this.x, this.y, Math.cos(angle+0.4)*6, Math.sin(angle+0.4)*6, '#ff55ff', true, 'NONE', false, 15));
-    } else { // Wall
+      bullets.push(new Bullet(this.x, this.y, Math.cos(angle)*6, Math.sin(angle)*6, '#ff55ff', true, 'NONE', false, 10));
+      bullets.push(new Bullet(this.x, this.y, Math.cos(angle-0.4)*6, Math.sin(angle-0.4)*6, '#ff55ff', true, 'NONE', false, 10));
+      bullets.push(new Bullet(this.x, this.y, Math.cos(angle+0.4)*6, Math.sin(angle+0.4)*6, '#ff55ff', true, 'NONE', false, 10));
+    } else { 
       const angle = Math.atan2(player.y - this.y, player.x - this.x);
-      // Reduced count (10 instead of 20) and increased offset (0.2 instead of 0.1) for bigger gaps
       for(let i=0; i<12; i++) {
         const offset = (i - 6) * 0.25; 
-        bullets.push(new Bullet(this.x, this.y, Math.cos(angle + offset)*8, Math.sin(angle + offset)*8, '#ff55ff', true, 'NONE', false, 15));
+        bullets.push(new Bullet(this.x, this.y, Math.cos(angle + offset)*8, Math.sin(angle + offset)*8, '#ff55ff', true, 'NONE', false, 10));
       }
     }
   }
@@ -954,18 +953,29 @@ class Boss {
     ctx.save();
     ctx.translate(this.x, this.y);
     ctx.shadowBlur = 30; ctx.shadowColor = '#ff00ff';
-    let grad = ctx.createRadialGradient(0, 0, 10, 0, 0, 60);
-    grad.addColorStop(0, '#440044'); grad.addColorStop(1, '#110011');
+    
+    // --- VISUELE UPGRADE BOSS ---
+    // Massive Dreadnought Shape
+    let grad = ctx.createLinearGradient(0, -80, 0, 80);
+    grad.addColorStop(0, '#440044'); grad.addColorStop(1, '#220022');
     ctx.fillStyle = grad;
+    
     ctx.beginPath();
-    for(let i=0; i<6; i++) {
-      let a = (i/6) * Math.PI * 2;
-      let r = i % 2 === 0 ? 80 : 40;
-      ctx.lineTo(Math.cos(a)*r, Math.sin(a)*r);
-    }
-    ctx.closePath(); ctx.fill();
-    ctx.strokeStyle = '#ff00ff'; ctx.lineWidth = 4; ctx.stroke();
+    ctx.moveTo(0, 100);
+    ctx.lineTo(60, 60); ctx.lineTo(80, 0); ctx.lineTo(60, -80);
+    ctx.lineTo(0, -60);
+    ctx.lineTo(-60, -80); ctx.lineTo(-80, 0); ctx.lineTo(-60, 60);
+    ctx.closePath();
+    ctx.fill();
+    
+    // Plating details
+    ctx.strokeStyle = '#ff00ff'; ctx.lineWidth = 3; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, 20, 0, Math.PI*2); ctx.stroke(); // Core
+    ctx.fillStyle = '#ff55ff'; ctx.fill();
+
     ctx.restore();
+    
+    // Boss HP Bar
     ctx.fillStyle = 'rgba(255,0,255,0.2)'; ctx.fillRect(width/2 - 200, 20, 400, 10);
     ctx.fillStyle = '#ff00ff'; ctx.fillRect(width/2 - 200, 20, 400 * (this.hp/this.maxHp), 10);
   }
@@ -991,11 +1001,12 @@ class Bullet {
 
     if (this.x < -50 || this.x > width+50 || this.y < -50 || this.y > height+50 || (!this.isEnemy && this.life <= 0)) {
       if (this.explosive && !this.isEnemy) {
-        spawnParticles(this.x, this.y, this.color, 20);
+        // FIX: Explosies groter en sterker gemaakt
+        spawnParticles(this.x, this.y, this.color, 40);
         enemies.forEach(enemy => {
           const dist = Math.hypot(this.x - enemy.x, this.y - enemy.y);
-          if (dist < 50) {
-            enemy.hp -= this.damage * 0.5;
+          if (dist < 100) { // Radius verhoogd van 50 naar 100
+            enemy.hp -= this.damage * 1.5; // Damage verhoogd
             if (enemy.hp <= 0) killEnemy(enemy);
           }
         });
@@ -1003,11 +1014,14 @@ class Bullet {
       if (this.chain && !this.isEnemy) {
         const nearbyEnemies = enemies.filter(e => {
           const d = Math.hypot(this.x - e.x, this.y - e.y);
-          return d < 100 && e !== this.originalTarget;
-        }).slice(0, 2);
+          return d < 200 && e !== this.originalTarget; // Range verhoogd
+        }).slice(0, 3);
         nearbyEnemies.forEach(enemy => {
-          enemy.hp -= this.damage * 0.7;
+          enemy.hp -= this.damage * 1.0;
           if (enemy.hp <= 0) killEnemy(enemy);
+          // Visual chain
+          ctx.strokeStyle = '#ffff00'; ctx.lineWidth = 2; 
+          ctx.beginPath(); ctx.moveTo(this.x, this.y); ctx.lineTo(enemy.x, enemy.y); ctx.stroke();
           spawnParticles((this.x + enemy.x)/2, (this.y + enemy.y)/2, '#ffff00', 10);
         });
       }
@@ -1048,6 +1062,8 @@ class Drop {
     } else if (this.type === 'HEAL') {
       ctx.fillStyle = '#00ff00'; ctx.shadowColor = '#00ff00';
       ctx.font = 'bold 20px Arial'; ctx.textAlign = 'center'; ctx.fillText('+', 0, 5);
+      // Ringetje eromheen
+      ctx.strokeStyle = '#00ff00'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0,0,12,0,Math.PI*2); ctx.stroke();
     } else if (this.type === 'CARD') {
       ctx.fillStyle = '#ff44aa'; ctx.shadowColor = '#ff44aa';
       ctx.beginPath(); ctx.arc(0,0,8,0,Math.PI*2); ctx.fill();
@@ -1075,7 +1091,6 @@ class Particle {
   }
 }
 
-// Keeping Background Logic (No changes needed)
 class GalaxyBackground {
   constructor() { this.layers = []; this.initLayers(); }
   initLayers() {
@@ -1127,7 +1142,7 @@ function initGame() {
   document.getElementById('element-selection').style.display = 'flex';
   resize();
   player = new Player();
-  drawDamageModel(player.parts); // Initial draw
+  drawDamageModel(player.parts); 
   bullets = []; enemies = []; drops = []; particles = []; allies = [];
   score = 0; wave = 1; elementPower = 0;
   bossSpawnedThisWave = false;
@@ -1161,25 +1176,17 @@ function spawnLogic() {
   } else {
     const maxEnemies = Math.min(3 + wave, 12);
     if (enemies.length < maxEnemies && Math.random() < 0.02 + wave * 0.005) {
-      
-      // FORMATION LOGIC (20% Chance, Aces Style)
       if (Math.random() < 0.20) { 
-        // Start corners
         const startX = Math.random() > 0.5 ? -50 : width + 50;
         const startY = -50;
-        
-        // End roughly bottom centerish/opposite side
         const endX = startX < 0 ? width + 50 : -50;
         const endY = height * 0.8;
-
         const count = 5;
         for(let i=0; i<count; i++) {
-          // Pass 'i' as delay
           const e = new Enemy(wave, true, startX, startY, endX, endY, i);
           enemies.push(e);
         }
       } else {
-        // Normal hover enemy (80%)
         enemies.push(new Enemy(wave, false));
       }
     }
@@ -1195,7 +1202,7 @@ function checkCollisions() {
         if (Math.hypot(b.x - e.x, b.y - e.y) < hitBox + 10) {
           if (player.effects.burn) e.burnTimer = 300;
           if (player.effects.stun && !e.stunned) { e.stunned = true; e.stunTimer = 60; }
-          if (player.effects.slow) { e.slowed = true; setTimeout(() => e.slowed = false, 3000); }
+          if (player.effects.slow) { e.slowed = true; setTimeout(() => e.slowed = false, 4000); } // Longer slow
           if (player.effects.chain) { b.chain = true; b.originalTarget = e; }
           
           e.hp -= b.damage;
@@ -1205,17 +1212,15 @@ function checkCollisions() {
         }
       });
     } else {
-      if (player.effects.dodge && Math.random() < 0.15) {
+      if (player.effects.dodge && Math.random() < 0.20) { // Buffed dodge chance
         spawnParticles(player.x, player.y, '#ffffff', 10);
         return;
       }
       let damage = b.damage;
-      if (player.effects.armor) damage *= 0.85;
-      if (player.effects.shield) damage *= 0.8;
+      if (player.effects.armor) damage *= 0.80; // Buffed armor
+      if (player.effects.shield) damage *= 0.70; // Buffed shield
       
-      // Player Collision - Visual Size Check (50 radius approx)
       if (Math.hypot(b.x - player.x, b.y - player.y) < 40) {
-        // Calculate Relative Hit
         const relX = b.x - player.x;
         const relY = b.y - player.y;
         
@@ -1234,8 +1239,8 @@ function checkCollisions() {
     if (!e.isBoss) { 
         const dist = Math.hypot(e.x - player.x, e.y - player.y);
         if (dist < e.size + 40) {
-            player.takeDamage(20, e.x - player.x, e.y - player.y); // Collision damage
-            e.hp -= 50;
+            player.takeDamage(10, e.x - player.x, e.y - player.y); // Minder collision damage
+            e.hp -= 100;
             spawnParticles(player.x, player.y, 'red', 10);
             if (e.hp <= 0) killEnemy(e);
             if (player.isDead()) gameOver();
@@ -1244,7 +1249,7 @@ function checkCollisions() {
   });
 
   drops.forEach(d => {
-    if (!d.marked && Math.hypot(d.x - player.x, d.y - player.y) < 50) {
+    if (!d.marked && Math.hypot(d.x - player.x, d.y - player.y) < 60) {
       d.marked = true;
       collectDrop(d.type);
     }
@@ -1264,13 +1269,13 @@ function killEnemy(e) {
     return;
   }
 
-  const dropChance = 0.3 + wave * 0.02;
+  const dropChance = Math.min(0.8, 0.5 + wave * 0.02); // Meer drops
   if (Math.random() < dropChance) {
     let dropType = 'XP';
     const rnd = Math.random();
-    if (rnd < 0.15) dropType = 'HEAL';
-    else if (rnd < 0.25) dropType = 'CARD';
-    else if (rnd < 0.30) dropType = 'SUPPORT';
+    if (rnd < 0.20) dropType = 'HEAL'; // Meer heal
+    else if (rnd < 0.35) dropType = 'CARD';
+    else if (rnd < 0.45) dropType = 'SUPPORT';
     drops.push(new Drop(e.x, e.y, dropType));
   }
   spawnParticles(e.x, e.y, '#ffaa00', 10);
@@ -1286,13 +1291,17 @@ function killEnemy(e) {
 
 function collectDrop(type) {
   if (type === 'HEAL') {
-    player.hp = Math.min(player.maxHp, player.hp + 20);
-    showNotification("REPAIRED");
+    // FIX: Heals parts now
+    Object.keys(player.parts).forEach(key => {
+        let p = player.parts[key];
+        p.hp = Math.min(p.max, p.hp + p.max * 0.5); // Heal 50% van onderdeel
+    });
+    drawDamageModel(player.parts);
+    showNotification("SYSTEMS REPAIRED");
   } else if (type === 'XP') {
     score += 50;
 } else if (type === 'SUPPORT') {
     showNotification("SQUADRON SUPPORT!");
-    // V-FORMATION SPAWN
     const offsets = [
         {x: 0, y: 0},
         {x: -200, y: 30}, {x: 200, y: 30},
@@ -1300,7 +1309,6 @@ function collectDrop(type) {
         {x: -600, y: 90}, {x: 600, y: 90}
     ];
     offsets.forEach(off => {
-        // VERANDER player.x NAAR width / 2
         allies.push(new SupportShip(width / 2 + off.x, height + 100 + off.y));
     });
   } else if (type === 'CARD') {
@@ -1335,6 +1343,20 @@ function showCardPickup(card) {
 
 function acceptCard() {
   player.effects[pendingCard.effect] = true;
+  
+  // Direct effect for revive
+  if(pendingCard.effect === 'revive') {
+     // Find dead part
+     for(let k in player.parts) {
+         if(player.parts[k].hp <= 0) {
+             player.parts[k].hp = player.parts[k].max;
+             showNotification(k.toUpperCase() + " ONLINE!");
+             drawDamageModel(player.parts);
+             break;
+         }
+     }
+  }
+
   if (pendingCard.effect === 'sniperElite') player.firstShot = true;
   
   let added = false;
