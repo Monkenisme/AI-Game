@@ -16,7 +16,7 @@ canvas { display: block; }
 #damage-display { position: absolute; bottom: 20px; left: 20px; width: 120px; height: 140px; background: rgba(0, 20, 40, 0.8); border: 2px solid #00d4ff; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 #damage-label { color: #00d4ff; font-size: 10px; margin-bottom: 5px; text-transform: uppercase; }
 
-/* XP / Medal Bar (AOTL Style) */
+/* XP / Medal Bar */
 #xp-bar-container { position: absolute; top: 60px; left: 50%; transform: translateX(-50%); width: 400px; height: 12px; background: #222; border: 2px solid #555; border-radius: 6px; box-shadow: 0 0 10px rgba(0,0,0,0.8); }
 #xp-bar-fill { height: 100%; background: linear-gradient(90deg, #ffaa00, #ffd700); width: 0%; transition: width 0.2s; box-shadow: 0 0 10px #ffd700; border-radius: 4px; }
 #xp-text { text-align: center; color: #ffd700; font-size: 13px; margin-top: 4px; text-transform: uppercase; font-weight: 900; letter-spacing: 1px; text-shadow: 1px 1px 2px #000; }
@@ -85,13 +85,12 @@ canvas { display: block; }
   <div id="element-bar-container"><div id="element-bar-fill"></div><div id="element-text">ELEMENT POWER</div></div>
   <div id="weapon-tier-display">WEAPON TIER: 0</div>
   
-  <!-- Squadron Super Power Meter -->
   <div id="super-power-container" style="position:absolute; bottom:20px; right:20px; width:180px; background:rgba(0,0,0,0.6); border:2px solid #ff8800; border-radius:10px; padding:8px 12px; color:white;">
     <div style="font-size:11px; color:#ff8800; text-transform:uppercase; margin-bottom:4px;">⚡ SQUADRON POWER</div>
     <div style="background:#222; border-radius:4px; height:10px; overflow:hidden; border:1px solid #555;">
       <div id="super-power-fill" style="height:100%; background:linear-gradient(90deg,#ff6600,#ffcc00); width:0%; transition:width 0.15s; box-shadow:0 0 8px #ff8800;"></div>
     </div>
-    <div id="super-power-text" style="font-size:11px; text-align:center; margin-top:3px; color:#aaa;">0 / 100 KILLS</div>
+    <div id="super-power-text" style="font-size:11px; text-align:center; margin-top:3px; color:#aaa;">0 / 50 KILLS</div>
     <div id="super-activate-btn" style="display:none; margin-top:6px; text-align:center; font-size:14px; font-weight:900; color:#ffcc00; text-shadow:0 0 10px #ff8800; animation:pulse 0.8s infinite alternate;">▶ ACTIVATE [SPACE]</div>
   </div>
   
@@ -153,32 +152,31 @@ let width, height, gameRunning = false, isPaused = false, frameCount = 0;
 let currentLevel = 1, wave = 1, waveTimer = 0, bossActive = false;
 let cardDroppedThisWave = false;
 let cameraShake = 0;
-const FRAMES_PER_WAVE = 1800; 
+let lastTimestamp = 0; 
+const FRAMES_PER_WAVE = 900; 
 
-// Intermission vars
 let inIntermission = false;
 let intermissionTimer = 0;
 let intermissionIsBoss = false;
 
-// Medal & Currency Progression System
 let score = 0, xp = 0, xpNeeded = 800, elementPower = 0, maxElementPower = 100;
 let currentWeapon = null, currentWeaponTier = 0, currentElement = 'NONE';
 let equippedCards = [null, null, null], pendingCard = null;
 
-// Squadron Logic
 let pendingSupportPasses = 0;
 let supportPassTimer = 0;
 let bossSupportsUsed = 0;
 let supportSpawnDelay = 0; 
-let globalFormationIdCounter = 0; // Used to limit formations on screen
+let globalFormationIdCounter = 0; 
 
-// Super Power / Squadron Meter
 let superPowerMeter = 0;
 let superPowerReady = false;
+let aceSpawnedThisWave = false;
+
 function getSuperPowerNeeded() {
-  if (wave <= 3) return 100;
-  if (wave <= 6) return 150;
-  return 200; // wave 7+
+  if (wave <= 3) return 50;
+  if (wave <= 6) return 75;
+  return 100; 
 }
 
 const ELEMENTS = { NONE: '#ffffff', FIRE: '#ff4444', WATER: '#4488ff', EARTH: '#44aa44', AIR: '#88ccff' };
@@ -217,7 +215,6 @@ const ELEMENT_CARDS = {
   ]
 };
 
-// Audio setup
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 let noiseBuffer = null, bgmInterval = null, bgmAudio = null, currentTheme = 'normal';
 let audioFiles = {}; 
@@ -240,37 +237,52 @@ function initAudio() {
 
 function playAudioFile(filename, shouldLoop = false) {
   try {
-    let audio = new Audio(filename);
-    audio.volume = 0.6;
-    if (shouldLoop) audio.loop = true;
-    audio.play().catch(e => { console.log('Audio file not found:', filename); });
-  } catch (e) {
-    console.log('Could not load audio:', filename);
-  }
+    const poolSize = 8; 
+    if (!audioFiles[filename + '_pool']) {
+      audioFiles[filename + '_pool'] = [];
+      for (let i = 0; i < poolSize; i++) {
+        let a = new Audio(filename);
+        a.volume = 0.6;
+        audioFiles[filename + '_pool'].push(a);
+      }
+      audioFiles[filename + '_index'] = 0;
+    }
+    let pool = audioFiles[filename + '_pool'];
+    let idx = audioFiles[filename + '_index'];
+    let a = pool[idx];
+    a.volume = 0.9;
+    if (shouldLoop) a.loop = true;
+    a.currentTime = 0;
+    a.play().catch(e => { });
+    audioFiles[filename + '_index'] = (idx + 1) % poolSize;
+  } catch (e) {}
 }
 
 function startBGM(theme = 'normal') {
   if (!audioCtx) return;
   if (audioCtx.state === 'suspended') audioCtx.resume();
-  // Stop currently playing BGM to prevent stacking
   if (bgmAudio) { bgmAudio.pause(); bgmAudio.currentTime = 0; bgmAudio = null; }
   if (bgmInterval) { clearInterval(bgmInterval); bgmInterval = null; }
   
   let filename = null;
+  let isBossMusic = false;
   if (theme === 'normal') filename = audioFiles.background;
-  else if (theme === 'boss1' || theme === 'boss2' || theme === 'boss3' || theme === 'boss4' || theme === 'secret') filename = audioFiles.boss;
+  else if (theme === 'boss1' || theme === 'boss2' || theme === 'boss3' || theme === 'boss4' || theme === 'secret') {
+    filename = audioFiles.boss;
+    isBossMusic = true;
+  }
   
   if (filename) {
     bgmAudio = new Audio(filename);
     bgmAudio.loop = true;
-    bgmAudio.volume = 0.6;
-    bgmAudio.play().catch(e => console.log('BGM not found:', filename));
+    bgmAudio.volume = isBossMusic ? 1.0 : 0.6;
+    bgmAudio.play().catch(e => {});
   }
   currentTheme = theme;
 }
 
 function playRealisticGun(type) {
-  if (!audioCtx || !noiseBuffer) return;
+  if (!audioCtx || !noiseBuffer || audioCtx.state === 'suspended') return;
   const now = audioCtx.currentTime; const noiseSource = audioCtx.createBufferSource(); noiseSource.buffer = noiseBuffer;
   const filter = audioCtx.createBiquadFilter(); const gain = audioCtx.createGain();
   if (type === 'machinegun') { filter.type = 'bandpass'; filter.frequency.value = 1800; filter.Q.value = 0.8; gain.gain.setValueAtTime(0.3, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08); } 
@@ -281,7 +293,7 @@ function playRealisticGun(type) {
 }
 
 function playEnemyGun(type) {
-  if (!audioCtx || !noiseBuffer) return;
+  if (!audioCtx || !noiseBuffer || audioCtx.state === 'suspended') return;
   const now = audioCtx.currentTime; const ns = audioCtx.createBufferSource(); ns.buffer = noiseBuffer;
   const f = audioCtx.createBiquadFilter(); const g = audioCtx.createGain();
   if (type === 'tank') { f.type = 'lowpass'; f.frequency.value = 400; g.gain.setValueAtTime(0.4, now); g.gain.exponentialRampToValueAtTime(0.01, now + 0.3); }
@@ -300,7 +312,7 @@ function playUpgradeSound() {
 }
 
 function playEngineFlyby() {
-  if (!audioCtx || !noiseBuffer) return;
+  if (!audioCtx || !noiseBuffer || audioCtx.state === 'suspended') return;
   const now = audioCtx.currentTime; const ns = audioCtx.createBufferSource(); ns.buffer = noiseBuffer;
   const f = audioCtx.createBiquadFilter(); const g = audioCtx.createGain();
   f.type = 'lowpass'; f.frequency.setValueAtTime(100, now); f.frequency.linearRampToValueAtTime(800, now + 1.0); f.frequency.linearRampToValueAtTime(100, now + 2.5);
@@ -309,7 +321,7 @@ function playEngineFlyby() {
 }
 
 function playImpactSound() {
-  if (!audioCtx) return;
+  if (!audioCtx || audioCtx.state === 'suspended') return;
   const now = audioCtx.currentTime; const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
   osc.type = 'square'; osc.frequency.setValueAtTime(600, now); osc.frequency.exponentialRampToValueAtTime(100, now + 0.1);
   gain.gain.setValueAtTime(0.2, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
@@ -332,11 +344,13 @@ function drawDamageModel(parts) {
 class Player {
   constructor() {
     this.x = window.innerWidth / 2; this.y = window.innerHeight - 100; this.size = 65; 
-    this.parts = { body: { hp: 120, max: 120 }, leftWing: { hp: 80, max: 80 }, rightWing: { hp: 80, max: 80 }, engine: { hp: 100, max: 100 }, gun: { hp: 90, max: 90 } };
-    this.speed = 0.3; this.damage = 15; this.fireRate = 8; this.fireTimer = 0; 
+    // Player HP met 50% verhoogd
+    this.parts = { body: { hp: 360, max: 360 }, leftWing: { hp: 240, max: 240 }, rightWing: { hp: 240, max: 240 }, engine: { hp: 300, max: 300 }, gun: { hp: 270, max: 270 } };
+    this.speed = 0.6; this.damage = 15; this.fireRate = 4; this.fireTimer = 0; 
     this.element = 'NONE'; this.weaponType = 'base'; this.shotCount = 1; this.spreadAngle = 0; this.isParallel = false;
     this.effects = {}; this.firstShot = true; this.backupGun = false; this.invincibleTimer = 0;
     this.damageMultiplier = 1; this.fireRateMultiplier = 1; this.speedMultiplier = 1; this.defenseMultiplier = 1;
+    this.isCrashing = false; this.crashTimer = 0; this.rotation = 0;
   }
   
   isDead() { return this.parts.body.hp <= 0 || this.parts.engine.hp <= 0 || (this.parts.leftWing.hp <= 0 && this.parts.rightWing.hp <= 0); }
@@ -354,7 +368,17 @@ class Player {
   }
 
   update() {
-    let baseSpeed = 0.3; let elementDmgMult = 1.0; let elementFRMult = 1.0;
+    if (this.isCrashing) {
+        this.crashTimer--;
+        this.y += 5.0; 
+        this.rotation += 0.2;
+        spawnParticles(this.x, this.y, '#ff4400', 5);
+        spawnParticles(this.x, this.y, '#444444', 5);
+        if (this.crashTimer <= 0) { showGameOver(); }
+        return;
+    }
+
+    let baseSpeed = 0.6; let elementDmgMult = 1.0; let elementFRMult = 1.0;
     
     if (this.element === 'FIRE') elementDmgMult = 1.15; 
     else if (this.element === 'WATER') elementFRMult = 1.15;
@@ -363,38 +387,40 @@ class Player {
 
     this.speed = (baseSpeed + (this.effects.speed || 0)) * this.speedMultiplier;
     
-    if (this.parts.engine.hp <= 0) { this.speed = 0.08; if (frameCount % 12 === 0) this.parts.body.hp -= 3; }
-    if (this.parts.leftWing.hp <= 0 && this.parts.rightWing.hp <= 0) { showGameOver(); return; }
+    if (this.parts.engine.hp <= 0) { this.speed = 0.16; if (frameCount % 6 === 0) this.parts.body.hp -= 3; }
+    if (this.parts.leftWing.hp <= 0 && this.parts.rightWing.hp <= 0) {
+        if (!this.isCrashing) { this.isCrashing = true; this.crashTimer = 60; playAudioFile(audioFiles.bossExplosion); }
+        return; 
+    }
     if (this.parts.leftWing.hp <= 0 || this.parts.rightWing.hp <= 0) this.speed *= 0.65;
     
-    let wDamage = 15; let wFireRate = 8; let wShotCount = 1; let wSpread = 0;
+    let wDamage = 15; let wFireRate = 4; let wShotCount = 1; let wSpread = 0;
     
     this.effects.pierce = false; this.isSlug = false; this.effects.splinter = false;
     this.effects.plasmaArea = false; this.effects.bigExplosion = false; this.effects.explosive = false;
     this.effects.incendiary = false; this.effects.homing = false; this.isParallel = false; this.bulletSpeedMult = 1.0; let isBossHunter = false;
 
     if (this.weaponType === 'sniper') {
-        wDamage = 320; wFireRate = 70; wShotCount = 1; wSpread = 0; 
+        wDamage = 320; wFireRate = 35; wShotCount = 1; wSpread = 0; 
         if(currentWeaponTier >= 1) { this.effects.pierce = true; }
-        if(currentWeaponTier >= 2) { wFireRate = 70; }
+        if(currentWeaponTier >= 2) { wFireRate = 35; }
         if(currentWeaponTier >= 3) { this.effects.plasmaArea = true; }
-        if(currentWeaponTier >= 4) { wFireRate = 50; }
+        if(currentWeaponTier >= 4) { wFireRate = 25; }
         if(currentWeaponTier >= 5) { this.bulletSpeedMult = 3.0; }
         if(currentWeaponTier >= 6) { this.effects.explosive = true; wDamage *= 2.0; } 
     } else if (this.weaponType === 'machinegun') {
-        // Balanced: ~3.5 dmg/frame same as sniper/shotgun
-        wDamage = 30; wFireRate = 10; wShotCount = 1; wSpread = 0;
+        wDamage = 30; wFireRate = 4; wShotCount = 1; wSpread = 0;
         if(currentWeaponTier >= 1) { wShotCount = 2; this.isParallel = true; wDamage = 25; }
-        if(currentWeaponTier >= 2) { wFireRate = 8; }
+        if(currentWeaponTier >= 2) { wFireRate = 3.5; }
         if(currentWeaponTier >= 3) { wShotCount = 3; this.isParallel = false; wSpread = 0.25; wDamage = 20; }
         if(currentWeaponTier >= 4) { wShotCount = 4; wSpread = 0.4; wDamage = 20; }
-        if(currentWeaponTier >= 5) { this.effects.incendiary = true; wFireRate = 7; }
-        if(currentWeaponTier >= 6) { wShotCount = 6; wSpread = 0.8; wFireRate = 6; wDamage = 15; } 
+        if(currentWeaponTier >= 5) { this.effects.incendiary = true; wFireRate = 3; }
+        if(currentWeaponTier >= 6) { wShotCount = 6; wSpread = 0.8; wFireRate = 3; wDamage = 15; } 
     } else if (this.weaponType === 'shotgun') {
-        wDamage = 60; wFireRate = 70; wShotCount = 4; wSpread = 0.6; 
+        wDamage = 60; wFireRate = 35; wShotCount = 4; wSpread = 0.6; 
         if(currentWeaponTier >= 1) { wShotCount = 6; }
         if(currentWeaponTier >= 2) { wSpread = 1.0; }
-        if(currentWeaponTier >= 3) { wFireRate = 50; }
+        if(currentWeaponTier >= 3) { wFireRate = 25; }
         if(currentWeaponTier >= 4) { this.effects.explosive = true; wDamage = 50; }
         if(currentWeaponTier >= 5) { wShotCount = 8; }
         if(currentWeaponTier >= 6) { wShotCount = 12; wSpread = 1.5; wDamage = 70; }
@@ -410,18 +436,18 @@ class Player {
     if (this.effects.armor) this.damage *= (0.75 * this.defenseMultiplier);
     
     this.x += (mouse.x - this.x) * this.speed; this.y += (mouse.y - this.y) * this.speed;
-    if(this.x < 30) this.x = 30; if(this.x > width-30) this.x = width-30;
-    if(this.y < 30) this.y = 30; if(this.y > height-30) this.y = height-30;
+    this.x = Math.max(30, Math.min(width - 30, this.x));
+    this.y = Math.max(30, Math.min(height - 30, this.y));
 
     if (this.effects.invincible) { this.invincibleTimer--; if (this.invincibleTimer <= 0) this.effects.invincible = false; }
     
-    if (this.effects.regen && frameCount % 180 === 0) {
+    if (this.effects.regen && frameCount % 90 === 0) {
         let worst = null; let minPct = 1;
         for (let k in this.parts) { let p = this.parts[k]; if (p.hp > 0 && p.hp < p.max && (p.hp/p.max) < minPct) { worst = k; minPct = p.hp/p.max; } }
         if (worst) { this.parts[worst].hp += 4 * this.defenseMultiplier; drawDamageModel(this.parts); } 
     }
 
-    if (this.effects.supernova && frameCount % 600 === 0) {
+    if (this.effects.supernova && frameCount % 300 === 0) {
       spawnParticles(this.x, this.y, '#ff4444', 100);
       enemies.forEach(enemy => { enemy.hp -= 350 * this.damageMultiplier; if (enemy.hp <= 0) killEnemy(enemy); });
     }
@@ -444,31 +470,38 @@ class Player {
     if (this.isParallel) {
         for (let i = 0; i < this.shotCount; i++) {
             let offset = (i - (this.shotCount - 1) / 2) * 20; 
-            const vy = -19 * this.bulletSpeedMult;
+            const vy = -38 * this.bulletSpeedMult;
             bullets.push(new Bullet(this.x + offset, this.y - 45, 0, vy, color, false, this.element, this.effects.explosive, this.damage, special));
         }
     } else {
         for (let i = 0; i < this.shotCount; i++) {
             const angle = this.shotCount > 1 ? (-this.spreadAngle/2 + i * angleStep) : 0;
-            const vx = Math.sin(angle) * 3.5 * this.bulletSpeedMult; 
-            const vy = -Math.cos(angle) * 19 * this.bulletSpeedMult;
+            const vx = Math.sin(angle) * 7.0 * this.bulletSpeedMult; 
+            const vy = -Math.cos(angle) * 38 * this.bulletSpeedMult;
             bullets.push(new Bullet(this.x, this.y - 45, vx, vy, color, false, this.element, this.effects.explosive, this.damage, special));
         }
     }
 
     if (this.weaponType === 'sniper' && !this.effects.bigExplosion) {
-        bullets.push(new Bullet(this.x - 20, this.y - 20, -4, -15, color, false, this.element, false, this.damage * 0.10));
-        bullets.push(new Bullet(this.x + 20, this.y - 20, 4, -15, color, false, this.element, false, this.damage * 0.10));
+        bullets.push(new Bullet(this.x - 20, this.y - 20, -8, -30, color, false, this.element, false, this.damage * 0.10));
+        bullets.push(new Bullet(this.x + 20, this.y - 20, 8, -30, color, false, this.element, false, this.damage * 0.10));
     }
   }
 
   draw() {
-    ctx.save(); ctx.translate(this.x, this.y); ctx.scale(2, 2);
+    ctx.save(); ctx.translate(this.x, this.y); 
+    if (this.rotation) ctx.rotate(this.rotation);
+    ctx.scale(2, 2);
+    if (this.isCrashing) {
+        let crashScale = Math.max(0.01, 1 - (60 - this.crashTimer) / 60);
+        ctx.scale(crashScale, crashScale);
+    }
+
     if (this.effects.invincible) {
         ctx.shadowBlur = 20; ctx.shadowColor = '#00d4ff'; ctx.strokeStyle = '#00d4ff'; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.arc(0, 0, 18 + Math.sin(frameCount * 0.1) * 2, 0, Math.PI*2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(0, 0, 18 + Math.sin(frameCount * 0.2) * 2, 0, Math.PI*2); ctx.stroke();
     }
-    if (this.parts.engine.hp > 0) {
+    if (this.parts.engine.hp > 0 && !this.isCrashing) {
         let flameH = 22 + Math.random() * 12; let grad = ctx.createLinearGradient(0, 18, 0, 18 + flameH);
         grad.addColorStop(0, '#00ffff'); grad.addColorStop(1, 'rgba(0, 255, 255, 0)'); ctx.fillStyle = grad;
         ctx.beginPath(); ctx.moveTo(-5, 18); ctx.lineTo(0, 18+flameH); ctx.lineTo(5, 18); ctx.fill();
@@ -489,13 +522,13 @@ class Player {
     drawVisualPart(this.parts.rightWing.hp, this.parts.rightWing.max, [[9, -4], [26, 12], [26, 22], [8, 18]]);
     if (this.parts.gun.hp > 0) { ctx.fillStyle = '#aaaaaa'; ctx.fillRect(-4, -28, 8, 14); ctx.strokeStyle = '#00d4ff'; ctx.strokeRect(-4, -28, 8, 14); } 
     else { ctx.fillStyle = '#555555'; ctx.fillRect(-3, -26, 6, 10); }
-    if(this.element !== 'NONE' && this.parts.body.hp > 0) { ctx.shadowBlur = 12; ctx.shadowColor = ELEMENTS[this.element]; ctx.strokeStyle = ELEMENTS[this.element]; ctx.lineWidth = 2; ctx.stroke(); ctx.shadowBlur = 0; }
+    if(this.element !== 'NONE' && this.parts.body.hp > 0 && !this.isCrashing) { ctx.shadowBlur = 12; ctx.shadowColor = ELEMENTS[this.element]; ctx.strokeStyle = ELEMENTS[this.element]; ctx.lineWidth = 2; ctx.stroke(); ctx.shadowBlur = 0; }
     ctx.restore();
   }
 }
 
 class SupportShip {
-  constructor(x, y, vx = 0, vy = -18, rotation = 0, delay = 0, pattern = 'linear') { 
+  constructor(x, y, vx = 0, vy = -36, rotation = 0, delay = 0, pattern = 'linear') { 
       this.x = x; this.y = y; this.vx = vx; this.vy = vy; 
       this.rotation = rotation; this.marked = false; this.fireTimer = 14; 
       this.delay = delay; this.pattern = pattern; 
@@ -507,11 +540,11 @@ class SupportShip {
     if (this.y < -400 || this.y > height + 400 || this.x < -400 || this.x > width + 400) this.marked = true;
 
     this.fireTimer++;
-    if (this.fireTimer >= 10) {
+    if (this.fireTimer >= 5) {
       this.fireTimer = 0;
       for(let i = -4; i <= 5; i++) {
           let angle = this.rotation - Math.PI/2 + (i * 0.12);
-          bullets.push(new Bullet(this.x, this.y, Math.cos(angle)*28, Math.sin(angle)*28, '#00ffcc', false, 'NONE', false, 60));
+          bullets.push(new Bullet(this.x, this.y, Math.cos(angle)*56, Math.sin(angle)*56, '#00ffcc', false, 'NONE', false, 60));
       }
       playRealisticGun('support');
     }
@@ -533,139 +566,275 @@ class Enemy {
     this.type = Math.floor(Math.random() * (maxType + 1));
     this.formationType = formationType;
     this.subType = 'normal';
+    if (this.type >= 3) this.subType = 'tank'; 
     
-    let baseHp = 40 + (this.type * 10); // Bigger ships, more HP
+    this.isCrashing = false;
+    this.crashTimer = 0;
+    this.returning = false;
+    this.returnTargetX = null;
+    
+    let baseHp = (40 + (this.type * 10)) * 2; 
     this.hp = baseHp * Math.pow(1.10, waveDiff - 1); 
     this.maxHp = this.hp; 
-    
-    // All enemies are player-sized
     this.size = 55;
-    
     this.vx = 0; 
+    this.targetY = 80 + Math.random() * 200;
+    this.xOffset = Math.random() * 200; 
+    this.rotation = 0;
     
-    if (this.formationType === 'diagonal-kette') {
-      // 3 ships in a diagonal line, fly straight down
+    if (formationType === 'bomber') {
+      this.behavior = 'bomber';
+      this.subType = 'bomber';
+      this.x = Math.random() * (width - 150) + 75;
+      this.y = -150;
+      this.hp = 2400 * Math.pow(1.10, waveDiff - 1); 
+      this.maxHp = this.hp;
+      this.size = 85;
+      this.speed = 1.0 * Math.pow(1.02, waveDiff - 1);
+      this.damage = 40;
+      this.fireInterval = 50;
+      this.rotation = Math.PI;
+    } else if (formationType === 'ace_pilot') {
+      this.behavior = 'ace_pilot';
+      this.subType = 'ace';
+      this.x = Math.random() > 0.5 ? -100 : width + 100;
+      this.y = Math.random() * 200;
+      this.hp = 600 * Math.pow(1.10, waveDiff - 1);
+      this.maxHp = this.hp;
+      this.speed = 6.0;
+      this.damage = 10;
+      this.fireInterval = 15;
+    } else if (formationType === 'boss_missile') {
+      this.behavior = 'boss_missile';
+      this.subType = 'boss_missile';
+      this.x = startX; this.y = startY;
+      this.hp = 120; // Player can shoot it down relatively easily
+      this.maxHp = 120;
+      this.speed = 2.5;
+      this.damage = 150; // Heavy damage to player
+      this.size = 20;
+      this.fireInterval = 9999;
+    } else if (formationType === 'fighter-wing') {
+      this.behavior = 'fighter-wing';
+      this.x = startX; this.y = startY;
+      this.speed = 7.2 * Math.pow(1.02, waveDiff - 1); // 2x speed
+      this.fireInterval = 60;
+    } else if (this.formationType === 'diagonal-kette') {
       this.behavior = 'diagonal-kette';
-      this.x = startX; this.y = startY;
+      this.x = startX; this.y = startY - 50;
       this.rotation = Math.PI;
-      this.fireInterval = 160;
+      this.fireInterval = 80;
     } else if (this.formationType === 'box') {
-      // 4 ships in box formation, fly straight down
       this.behavior = 'box';
-      this.x = startX; this.y = startY;
+      this.x = startX; this.y = startY - 50;
       this.rotation = Math.PI;
-      this.fireInterval = 180;
+      this.fireInterval = 90;
     } else if (this.formationType === 'column-sweep') {
-      // Straight-down column, starts off-screen top
       this.behavior = 'column-sweep';
       this.x = startX || Math.random() * (width - 200) + 100;
-      this.y = startY || -80;
+      this.y = startY || -150;
       this.rotation = Math.PI;
       this.vy = 0;
-      this.fireInterval = 140;
+      this.fireInterval = 70;
     } else {
-      // Default: homing
-      this.x = Math.random() * (width - 80) + 40; this.y = -60; this.targetY = 80 + Math.random() * 200;
-      this.xOffset = Math.random() * 200; this.rotation = 0;
+      this.x = Math.random() * (width - 80) + 40;
+      this.y = -150;
       this.behavior = 'homing';
-      this.fireInterval = 200;
+      this.fireInterval = 100;
     }
 
+    if(this.formationType !== 'bomber' && this.formationType !== 'ace_pilot' && this.formationType !== 'boss_missile' && this.formationType !== 'fighter-wing') {
+       this.speed = 3.6 * Math.pow(1.02, waveDiff - 1); 
+       this.damage = Math.min(50, 20 * Math.pow(1.08, waveDiff - 1));
+    }
     this.fireTimer = Math.random() * this.fireInterval;
-    this.speed = 1.8 * Math.pow(1.02, waveDiff - 1); 
-    this.damage = Math.min(50, 20 * Math.pow(1.08, waveDiff - 1));
-    
     this.slowed = false; this.stunned = false; this.stunTimer = 0; this.burnTimer = 0;
   }
 
   update() {
+    if (this.isCrashing) {
+        this.crashTimer--;
+        this.y += 6;
+        this.rotation += 0.3;
+        spawnParticles(this.x, this.y, '#ff4400', 4);
+        spawnParticles(this.x, this.y, '#222222', 4);
+        if (this.crashTimer <= 0) { finalizeKillEnemy(this); }
+        return;
+    }
+
     if (this.stunned) { this.stunTimer--; if (this.stunTimer <= 0) this.stunned = false; else return; }
     if (this.burnTimer > 0) { 
         this.burnTimer--; this.hp -= 1.5 * player.damageMultiplier; 
-        if(frameCount % 10 === 0) spawnParticles(this.x, this.y, '#ff4400', 3);
+        if(frameCount % 5 === 0) spawnParticles(this.x, this.y, '#ff4400', 3);
         if (this.hp <= 0) { killEnemy(this); return; } 
     }
     
     const speedMult = this.slowed ? 0.40 : 1; 
 
-    if (this.behavior === 'diagonal-kette' || this.behavior === 'box') {
-       this.y += this.speed * speedMult; 
-       if (this.y > height + 80) { 
-         if (this.hp >= this.maxHp * 0.8) {
-           this.y = -80;
-         } else {
-           enemies = enemies.filter(e => e !== this);
-           return;
-         }
-       }
-    } else if (this.formationType === 'column-sweep') {
-      // Straight down column — reverse (bounce) when off-screen
-      const dir = this.vy === -1 ? -1 : 1;
-      this.y += this.speed * speedMult * dir;
-      
-      if (dir === 1 && this.y > height + 80) {
-        this.vy = -1; // reverse
-      } else if (dir === -1 && this.y < -80) {
-        if (this.hp >= this.maxHp * 0.8) {
-          // Undamaged: do another pass from top
-          this.vy = 0;
-        } else {
-          enemies = enemies.filter(e => e !== this);
-          return;
+    if (this.returning) {
+        if (!this.returnTargetX) {
+            this.returnTargetX = width * 0.2 + Math.random() * (width * 0.6);
+            this.returnTargetY = height * 0.1 + Math.random() * (height * 0.3);
+            this.rotation = Math.atan2(this.returnTargetY - this.y, this.returnTargetX - this.x);
         }
-      }
+
+        let targetRotation = Math.atan2(this.returnTargetY - this.y, this.returnTargetX - this.x);
+        let diff = targetRotation - this.rotation;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        this.rotation += diff * 0.05;
+
+        this.x += Math.cos(this.rotation) * this.speed * 1.5 * speedMult;
+        this.y += Math.sin(this.rotation) * this.speed * 1.5 * speedMult;
+
+        if (Math.hypot(this.returnTargetX - this.x, this.returnTargetY - this.y) < 50) {
+            this.returning = false;
+            this.returnTargetX = null;
+        }
     } else {
-      // Default homing
-      if (this.y < this.targetY) this.y += this.speed * speedMult * 0.9;
-      else { this.x += (player.x - this.x) * 0.008 * speedMult; this.x += Math.cos(frameCount * 0.011 + this.xOffset) * 1.0; }
-      this.rotation = Math.PI + Math.sin(frameCount * 0.04) * 0.2;
+        if (this.behavior === 'bomber') {
+           this.y += this.speed * speedMult;
+           if (this.y > height + 100) { this.returning = true; }
+        } else if (this.behavior === 'ace_pilot') {
+           this.rotation = Math.atan2(player.y - this.y, player.x - this.x);
+           this.x += Math.cos(this.rotation) * this.speed * speedMult;
+           this.y += Math.sin(this.rotation) * this.speed * speedMult;
+           if (this.y > height + 150 || this.y < -150 || this.x > width + 150 || this.x < -150) { this.returning = true; }
+        } else if (this.behavior === 'boss_missile') {
+           this.rotation = Math.atan2(player.y - this.y, player.x - this.x);
+           this.x += Math.cos(this.rotation) * this.speed * speedMult;
+           this.y += Math.sin(this.rotation) * this.speed * speedMult;
+           if (frameCount % 3 === 0) spawnParticles(this.x, this.y, '#888888', 2);
+        } else if (this.behavior === 'fighter-wing') {
+           this.x += this.side * this.speed * speedMult;
+           this.y += Math.sin(frameCount * 0.05 + this.xOffset) * 4.0 + 1.5;
+           this.rotation = Math.atan2(Math.sin(frameCount * 0.05 + this.xOffset) * 4.0 + 1.5, this.side * this.speed * speedMult);
+           if (this.x > width + 150 || this.x < -150 || this.y > height + 100) this.returning = true;
+        } else if (this.behavior === 'diagonal-kette' || this.behavior === 'box') {
+           this.y += this.speed * speedMult; 
+           if (this.y > height + 80) { this.returning = true; }
+        } else if (this.behavior === 'column-sweep') {
+          const dir = this.vy === -1 ? -1 : 1;
+          this.y += this.speed * speedMult * dir;
+          if (dir === 1 && this.y > height + 80) { this.vy = -1; } 
+          else if (dir === -1 && this.y < -80) { this.returning = true; }
+        } else {
+          if (this.y < this.targetY) this.y += this.speed * speedMult * 0.9;
+          else { 
+            if (this.subType === 'tank') {
+               this.x += (player.x - this.x) * 0.02 * speedMult;
+               this.y += (player.y - this.y - 300) * 0.01 * speedMult; 
+               this.rotation = Math.atan2(player.y - this.y, player.x - this.x) - Math.PI/2;
+            } else {
+               this.x += (player.x - this.x) * 0.008 * speedMult; 
+               this.x += Math.cos(frameCount * 0.022 + this.xOffset) * 2.0; 
+               this.rotation = Math.PI + Math.sin(frameCount * 0.08) * 0.2;
+            }
+          }
+        }
+    }
+
+    if (!this.returning) {
+        enemies.forEach(other => {
+            if (other !== this && !other.isBoss && !other.isCrashing) {
+                let dx = this.x - other.x; let dy = this.y - other.y;
+                let dist = Math.hypot(dx, dy);
+                let minDist = this.size + 15;
+                if (dist < minDist && dist > 0) {
+                    this.x += (dx / dist) * 1.5;
+                    this.y += (dy / dist) * 1.5;
+                }
+            }
+        });
     }
     
-    // Shoot only when reasonably close to player and on screen
-    if (!inIntermission) {
+    if (!inIntermission && this.subType !== 'boss_missile') {
         let distToPlayer = Math.hypot(this.x - player.x, this.y - player.y);
-        let shootRange = height * 0.65;
+        let shootRange = height * 0.75;
         this.fireTimer--;
         if (this.fireTimer <= 0 && distToPlayer < shootRange && this.y > -50 && this.y < height + 50) { 
             this.fireTimer = this.fireInterval; 
-            // Only shoot with some probability based on formation type
-            if (Math.random() < 0.6) this.shoot();
+            if (this.subType === 'bomber' || this.subType === 'ace' || Math.random() < 0.6) this.shoot();
         }
     }
   }
 
   shoot() {
-    // Each ship fires exactly 1 bullet aimed at player
+    if (this.subType === 'bomber') {
+        for (let i=0; i<8; i++) {
+            let a = (i/8)*Math.PI*2;
+            bullets.push(new Bullet(this.x, this.y+20, Math.cos(a)*8, Math.sin(a)*8, '#ffaa00', true, 'NONE', false, this.damage));
+        }
+        playEnemyGun('tank');
+        return;
+    }
+    
+    if (this.subType === 'ace') {
+        const angle = Math.atan2(player.y - this.y, player.x - this.x);
+        bullets.push(new Bullet(this.x, this.y, Math.cos(angle)*12, Math.sin(angle)*12, '#ffffff', true, 'NONE', false, this.damage));
+        playEnemyGun('speedy');
+        return;
+    }
+
     const angle = Math.atan2(player.y - this.y, player.x - this.x);
-    const spd = 4.5;
+    const spd = this.subType === 'tank' ? 7.0 : 9.0;
     let b = new Bullet(this.x, this.y + 20, Math.cos(angle)*spd, Math.sin(angle)*spd, '#ff5555', true, 'NONE', false, this.damage);
-    b.size = 7;
+    b.size = this.subType === 'tank' ? 9 : 7;
     bullets.push(b);
     playEnemyGun(this.subType || 'normal');
   }
   
   draw() {
-    ctx.save(); ctx.translate(this.x, this.y); ctx.rotate(this.rotation);
-    // All enemies at player scale (2x)
-    ctx.scale(2, 2);
+    ctx.save(); ctx.translate(this.x, this.y); 
+    
+    if (this.subType === 'ace' || this.subType === 'boss_missile' || this.behavior === 'fighter-wing' || this.returning) {
+         ctx.rotate(this.rotation + Math.PI/2);
+    } else {
+         ctx.rotate(this.rotation);
+    }
+    
+    let renderScale = this.subType === 'bomber' ? 3.0 : 2.0;
+    if (this.isCrashing) {
+        let crashScale = Math.max(0.01, 1 - (22 - this.crashTimer)/22);
+        ctx.scale(renderScale * crashScale, renderScale * crashScale);
+    } else {
+        ctx.scale(renderScale, renderScale);
+    }
 
-    ctx.shadowBlur = 48; ctx.shadowColor = this.type === 6 ? '#ff0055' : (this.type < 3 ? '#ff3333' : '#aa00ff');
-    // Engine glow
-    let flameH = 18 + Math.random() * 8; 
-    let grad = ctx.createLinearGradient(0, 18, 0, 18 + flameH);
-    grad.addColorStop(0, '#ff4400'); grad.addColorStop(1, 'rgba(255, 68, 0, 0)'); 
-    ctx.fillStyle = grad;
-    ctx.beginPath(); ctx.moveTo(-4, 18); ctx.lineTo(0, 18+flameH); ctx.lineTo(4, 18); ctx.fill();
-    
-    // Main body
-    ctx.fillStyle = this.slowed ? '#0077ff' : (this.type === 6 ? '#880022' : (this.type < 3 ? '#660000' : '#440066'));
-    ctx.beginPath(); ctx.moveTo(-14, 12); ctx.lineTo(14, 12); ctx.lineTo(22, -8); ctx.lineTo(0, -26); ctx.lineTo(-22, -8); ctx.closePath(); ctx.fill();
-    // Cockpit
-    ctx.fillStyle = this.type < 3 ? '#ff4444' : '#aa44ff'; 
-    ctx.beginPath(); ctx.arc(0, -8, 5, 0, Math.PI*2); ctx.fill();
-    // Gun nozzle
-    ctx.fillStyle = '#ffdd88'; ctx.fillRect(-2, -30, 4, 12);
-    
+    if (this.subType === 'bomber') {
+        ctx.shadowBlur = 40; ctx.shadowColor = '#ff6600';
+        ctx.fillStyle = '#442211';
+        ctx.beginPath(); ctx.moveTo(-20, 10); ctx.lineTo(20, 10); ctx.lineTo(30, -10); ctx.lineTo(0, -30); ctx.lineTo(-30, -10); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#ffaa00'; ctx.beginPath(); ctx.arc(0, -10, 8, 0, Math.PI*2); ctx.fill();
+    } else if (this.subType === 'ace') {
+        ctx.shadowBlur = 20; ctx.shadowColor = '#ffffff';
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath(); ctx.moveTo(0, -20); ctx.lineTo(-10, 10); ctx.lineTo(10, 10); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#ff0000'; ctx.beginPath(); ctx.arc(0, 0, 4, 0, Math.PI*2); ctx.fill();
+    } else if (this.subType === 'boss_missile') {
+        ctx.shadowBlur = 15; ctx.shadowColor = '#ff2200';
+        ctx.fillStyle = '#aa0000';
+        ctx.beginPath(); ctx.moveTo(0, -20); ctx.lineTo(-10, 10); ctx.lineTo(10, 10); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#ffaa00'; ctx.beginPath(); ctx.arc(0, -15, 6, 0, Math.PI*2); ctx.fill();
+        let flameH = 10 + Math.random() * 15;
+        ctx.fillStyle = '#ffeedd';
+        ctx.beginPath(); ctx.moveTo(-5, 10); ctx.lineTo(0, 10 + flameH); ctx.lineTo(5, 10); ctx.fill();
+    } else {
+        ctx.shadowBlur = 48; ctx.shadowColor = this.type === 6 ? '#ff0055' : (this.type < 3 ? '#ff3333' : '#aa00ff');
+        let flameH = 18 + Math.random() * 8; 
+        let grad = ctx.createLinearGradient(0, 18, 0, 18 + flameH);
+        grad.addColorStop(0, '#ff4400'); grad.addColorStop(1, 'rgba(255, 68, 0, 0)'); 
+        ctx.fillStyle = grad;
+        ctx.beginPath(); ctx.moveTo(-4, 18); ctx.lineTo(0, 18+flameH); ctx.lineTo(4, 18); ctx.fill();
+        
+        ctx.fillStyle = this.slowed ? '#0077ff' : (this.type === 6 ? '#880022' : (this.type < 3 ? '#660000' : '#440066'));
+        ctx.beginPath(); ctx.moveTo(-14, 12); ctx.lineTo(14, 12); ctx.lineTo(22, -8); ctx.lineTo(0, -26); ctx.lineTo(-22, -8); ctx.closePath(); ctx.fill();
+        
+        ctx.fillStyle = this.type < 3 ? '#ff4444' : '#aa44ff'; 
+        ctx.beginPath(); ctx.arc(0, -8, 5, 0, Math.PI*2); ctx.fill();
+        
+        ctx.fillStyle = '#ffdd88'; ctx.fillRect(-2, -30, 4, 12);
+    }
     ctx.restore();
   }
 }
@@ -674,75 +843,64 @@ class Boss {
   constructor(waveNum) {
     this.waveNum = waveNum; this.isBoss = true;
     let opMult = 1 + (currentWeaponTier * 0.2);
-    this.currentPhase = 0; // 0=engines, 1=guns, 2=hull
+    this.currentPhase = 0; 
     this.parts = [];
     let totalBossHp = 0;
+    this.isCrashing = false; this.crashTimer = 0;
     
     if (waveNum === 3) {
       this.name = "IRON HAWK FORTRESS";
-      // Phase 0: 2 propulsion engines (rear)
       this.parts.push({id:'eng_l', relX:-110, relY:60, hp:2200*opMult, maxHp:2200*opMult, radius:30, color:'#00ff66', isDead:false, phase:0, label:'ENGINE'});
       this.parts.push({id:'eng_r', relX:110, relY:60, hp:2200*opMult, maxHp:2200*opMult, radius:30, color:'#00ff66', isDead:false, phase:0, label:'ENGINE'});
-      // Phase 1: 2 gun turrets (front)
       this.parts.push({id:'gun_l', relX:-70, relY:-65, hp:2000*opMult, maxHp:2000*opMult, radius:22, color:'#ff8800', isDead:false, phase:1, label:'GUN'});
       this.parts.push({id:'gun_r', relX:70, relY:-65, hp:2000*opMult, maxHp:2000*opMult, radius:22, color:'#ff8800', isDead:false, phase:1, label:'GUN'});
-      // Phase 2: Main hull core
       this.parts.push({id:'hull', relX:0, relY:0, hp:3000*opMult, maxHp:3000*opMult, radius:55, color:'#ff2200', isDead:false, phase:2, label:'HULL'});
       totalBossHp = 11400 * opMult;
     } else if (waveNum === 6) {
       this.name = "STEEL CARRIER FORTRESS";
-      // Phase 0: 4 engines
       this.parts.push({id:'eng_fl', relX:-130, relY:80, hp:2800*opMult, maxHp:2800*opMult, radius:28, color:'#00ff66', isDead:false, phase:0, label:'ENGINE'});
       this.parts.push({id:'eng_fr', relX:130, relY:80, hp:2800*opMult, maxHp:2800*opMult, radius:28, color:'#00ff66', isDead:false, phase:0, label:'ENGINE'});
       this.parts.push({id:'eng_rl', relX:-50, relY:90, hp:2800*opMult, maxHp:2800*opMult, radius:24, color:'#00ff66', isDead:false, phase:0, label:'ENGINE'});
       this.parts.push({id:'eng_rr', relX:50, relY:90, hp:2800*opMult, maxHp:2800*opMult, radius:24, color:'#00ff66', isDead:false, phase:0, label:'ENGINE'});
-      // Phase 1: 3 gun batteries
       this.parts.push({id:'bat_l', relX:-120, relY:-20, hp:3500*opMult, maxHp:3500*opMult, radius:26, color:'#ff8800', isDead:false, phase:1, label:'BATTERY'});
       this.parts.push({id:'bat_c', relX:0, relY:-80, hp:3500*opMult, maxHp:3500*opMult, radius:26, color:'#ff8800', isDead:false, phase:1, label:'BATTERY'});
       this.parts.push({id:'bat_r', relX:120, relY:-20, hp:3500*opMult, maxHp:3500*opMult, radius:26, color:'#ff8800', isDead:false, phase:1, label:'BATTERY'});
-      // Phase 2: Command bridge / hull
       this.parts.push({id:'hull', relX:0, relY:10, hp:5000*opMult, maxHp:5000*opMult, radius:65, color:'#ff2200', isDead:false, phase:2, label:'HULL'});
       totalBossHp = 25600 * opMult;
     } else if (waveNum === 9) {
       this.name = "DOOM ZEPPELIN";
-      // Phase 0: 3 propeller engines
       this.parts.push({id:'prop_l', relX:-120, relY:50, hp:4000*opMult, maxHp:4000*opMult, radius:32, color:'#00ff66', isDead:false, phase:0, label:'PROPELLER'});
       this.parts.push({id:'prop_c', relX:0, relY:80, hp:4000*opMult, maxHp:4000*opMult, radius:32, color:'#00ff66', isDead:false, phase:0, label:'PROPELLER'});
       this.parts.push({id:'prop_r', relX:120, relY:50, hp:4000*opMult, maxHp:4000*opMult, radius:32, color:'#00ff66', isDead:false, phase:0, label:'PROPELLER'});
-      // Phase 1: 4 gun turrets
       this.parts.push({id:'tur_ll', relX:-140, relY:-30, hp:3500*opMult, maxHp:3500*opMult, radius:24, color:'#ff8800', isDead:false, phase:1, label:'TURRET'});
       this.parts.push({id:'tur_l', relX:-60, relY:-60, hp:3500*opMult, maxHp:3500*opMult, radius:24, color:'#ff8800', isDead:false, phase:1, label:'TURRET'});
       this.parts.push({id:'tur_r', relX:60, relY:-60, hp:3500*opMult, maxHp:3500*opMult, radius:24, color:'#ff8800', isDead:false, phase:1, label:'TURRET'});
       this.parts.push({id:'tur_rr', relX:140, relY:-30, hp:3500*opMult, maxHp:3500*opMult, radius:24, color:'#ff8800', isDead:false, phase:1, label:'TURRET'});
-      // Phase 2: Command gondola
       this.parts.push({id:'hull', relX:0, relY:-20, hp:6000*opMult, maxHp:6000*opMult, radius:70, color:'#ff2200', isDead:false, phase:2, label:'GONDOLA'});
       totalBossHp = 28000 * opMult;
     } else if (waveNum === 10) {
       this.name = "FINAL COLOSSUS";
-      // Phase 0: 5 massive engines (very tanky)
       this.parts.push({id:'eng_ll', relX:-200, relY:100, hp:6000*opMult, maxHp:6000*opMult, radius:38, color:'#00ff66', isDead:false, phase:0, label:'ENGINE'});
       this.parts.push({id:'eng_l', relX:-110, relY:120, hp:6000*opMult, maxHp:6000*opMult, radius:35, color:'#00ff66', isDead:false, phase:0, label:'ENGINE'});
       this.parts.push({id:'eng_c', relX:0, relY:130, hp:7000*opMult, maxHp:7000*opMult, radius:40, color:'#00ff66', isDead:false, phase:0, label:'ENGINE'});
       this.parts.push({id:'eng_r', relX:110, relY:120, hp:6000*opMult, maxHp:6000*opMult, radius:35, color:'#00ff66', isDead:false, phase:0, label:'ENGINE'});
       this.parts.push({id:'eng_rr', relX:200, relY:100, hp:6000*opMult, maxHp:6000*opMult, radius:38, color:'#00ff66', isDead:false, phase:0, label:'ENGINE'});
-      // Phase 1: 5 heavy cannons
       this.parts.push({id:'can_ll', relX:-190, relY:-50, hp:5500*opMult, maxHp:5500*opMult, radius:30, color:'#ff8800', isDead:false, phase:1, label:'CANNON'});
       this.parts.push({id:'can_l', relX:-100, relY:-80, hp:5500*opMult, maxHp:5500*opMult, radius:30, color:'#ff8800', isDead:false, phase:1, label:'CANNON'});
       this.parts.push({id:'can_c', relX:0, relY:-110, hp:6000*opMult, maxHp:6000*opMult, radius:34, color:'#ff8800', isDead:false, phase:1, label:'CANNON'});
       this.parts.push({id:'can_r', relX:100, relY:-80, hp:5500*opMult, maxHp:5500*opMult, radius:30, color:'#ff8800', isDead:false, phase:1, label:'CANNON'});
       this.parts.push({id:'can_rr', relX:190, relY:-50, hp:5500*opMult, maxHp:5500*opMult, radius:30, color:'#ff8800', isDead:false, phase:1, label:'CANNON'});
-      // Phase 2: Core reactor — armored
       this.parts.push({id:'core', relX:0, relY:0, hp:14000*opMult, maxHp:14000*opMult, radius:90, color:'#ff0000', isDead:false, phase:2, label:'CORE'});
       totalBossHp = 80000 * opMult;
     }
     
     this.hp = totalBossHp; this.maxHp = totalBossHp;
-    this.speed = waveNum === 10 ? 2.2 : (waveNum === 9 ? 1.6 : 1.2);
+    this.speed = waveNum === 10 ? 4.4 : (waveNum === 9 ? 3.2 : 2.4);
     this.x = width / 2; this.y = -400;
     this.targetY = waveNum === 6 ? 120 : (waveNum === 10 ? 150 : 170);
     this.introPhase = true;
     this.fireTimer = 0; this.pattern = 0; this.patternTimer = 0;
-    this.attackPhaseTimer = 0; this.attackInterval = 80; // between attack bursts
+    this.attackPhaseTimer = 0; this.attackInterval = 40; 
     this.inAttack = false; this.attackBurstTimer = 0;
     this.burnTimer = 0; this.hitCount = 0; this.direction = 1; this.slowed = false;
   }
@@ -759,16 +917,22 @@ class Boss {
         let msg = this.waveNum === 10 ? "CANNONS DESTROYED! TARGET THE CORE!" : "GUNS DESTROYED! TARGET THE HULL!";
         showNotification(msg); cameraShake = 30; 
       }
-      else if (this.currentPhase > 2) { 
-        // Boss is done — mark hp = 0 for SecretBoss, or let killEnemy handle phase bosses
-      }
     }
   }
   
   update() {
+    if (this.isCrashing) {
+        this.crashTimer--;
+        this.y += 3.0;
+        this.x += Math.sin(this.crashTimer * 0.2) * 5;
+        spawnParticles(this.x + (Math.random()-0.5)*150, this.y + (Math.random()-0.5)*150, '#ff4400', 10);
+        spawnParticles(this.x + (Math.random()-0.5)*150, this.y, '#222222', 15);
+        if (this.crashTimer <= 0) { finalizeKillEnemy(this); }
+        return;
+    }
+
     if (this.burnTimer > 0) { 
       this.burnTimer--; 
-      // For phase bosses, burn only damages active parts
       if (this.currentPhase <= 2) {
         let activeParts = this.parts.filter(p => p.phase === this.currentPhase && !p.isDead);
         if (activeParts.length > 0) {
@@ -784,22 +948,27 @@ class Boss {
     }
     
     if (this.currentPhase !== undefined && this.currentPhase !== 99 && this.currentPhase > 2) return;
-    const baseSpeedMult = this.slowed ? 0.60 : 1;
+    
+    let baseSpeedMult = this.slowed ? 0.60 : 1.0;
+    let totalEngines = this.parts.filter(p => p.label === 'ENGINE' || p.label === 'PROPELLER').length;
+    let aliveEngines = this.parts.filter(p => (p.label === 'ENGINE' || p.label === 'PROPELLER') && !p.isDead).length;
+    if (totalEngines > 0) {
+        baseSpeedMult *= (0.3 + 0.7 * (aliveEngines / totalEngines));
+    }
     
     if (this.introPhase) {
-        if (this.y < this.targetY) { this.y += 2.5 * baseSpeedMult; } 
+        if (this.y < this.targetY) { this.y += 5.0 * baseSpeedMult; } 
         else { this.y = this.targetY; this.introPhase = false; }
     } else {
         if (this.waveNum === 6) {
             this.x += this.speed * 2.5 * this.direction * baseSpeedMult;
             if(this.x < width*0.2 || this.x > width*0.8) this.direction *= -1;
         } else if (this.waveNum === 9) {
-            this.x += Math.sin(frameCount * 0.018) * 6.0 * baseSpeedMult;
-            this.y = this.targetY + Math.sin(frameCount * 0.030) * 60;
+            this.x += Math.sin(frameCount * 0.036) * 6.0 * baseSpeedMult;
+            this.y = this.targetY + Math.sin(frameCount * 0.060) * 60;
         } else if (this.waveNum === 10) {
-            // Aggressive diagonal movement that covers more screen
             this.x += this.speed * 4.5 * this.direction * baseSpeedMult;
-            this.y = this.targetY + Math.sin(frameCount * 0.025) * 80;
+            this.y = this.targetY + Math.sin(frameCount * 0.050) * 80;
             if(this.x < width*0.1 || this.x > width*0.9) { this.direction *= -1; }
         } else {
             this.x += this.speed * 3.5 * this.direction * baseSpeedMult;
@@ -809,24 +978,43 @@ class Boss {
     
     if (!inIntermission && !this.introPhase) {
         this.patternTimer++;
-        // Attack intervals: wait, then burst, then wait
         this.attackPhaseTimer++;
-        let numPatterns = this.waveNum === 10 ? 6 : (this.waveNum === 9 ? 5 : (this.waveNum === 6 ? 4 : 3));
+        let numPatterns = this.waveNum === 10 ? 4 : (this.waveNum === 9 ? 5 : (this.waveNum === 6 ? 4 : 3));
+        
+        let activeGunsCount = this.parts.filter(p => !p.isDead && ['GUN', 'BATTERY', 'TURRET', 'CANNON'].includes(p.label)).length;
+        let isRageMode = (this.currentPhase === 1 && activeGunsCount === 1);
+
         if (this.attackPhaseTimer >= this.attackInterval) {
             this.attackPhaseTimer = 0;
             this.inAttack = true;
             this.attackBurstTimer = 0;
             this.pattern = (this.pattern + 1) % numPatterns;
-            this.attackInterval = this.waveNum === 10 ? 
-                40 + Math.random() * 30 : // Wave 10 attacks much more frequently
-                80 + Math.random() * 60;
+            this.attackInterval = this.waveNum === 10 ? 80 + Math.random() * 40 : 40 + Math.random() * 30;
+            if (isRageMode) this.attackInterval = 25; 
         }
+        
         if (this.inAttack) {
             this.attackBurstTimer++;
             this.fireTimer++;
-            let fireInterval = this.waveNum === 10 ? 8 : (this.waveNum === 3 ? 22 : (this.waveNum === 6 ? 18 : 14));
+            
+// Fire interval verhoogd voor Boss 10 zodat hij minder spammt
+            let fireInterval = this.waveNum === 10 ? (this.pattern === 2 ? 160 : (this.pattern === 1 ? 120 : 80)) : (this.waveNum === 3 ? 22 : (this.waveNum === 6 ? 18 : 14));
+            
+            if (this.currentPhase === 0) {
+                fireInterval *= 5; 
+            } else if (isRageMode) {
+                fireInterval = 6; 
+            } else if (this.currentPhase === 1) {
+                fireInterval = Math.max(4, Math.floor(fireInterval * 0.8)); 
+            }
+
             if (this.fireTimer >= fireInterval) { this.fireTimer = 0; this.shoot(); }
-            let burstDuration = this.waveNum === 10 ? 120 : 90;
+            
+            // Burst duration verlaagd (was 180) zodat de aanvalspauzes eerlijker zijn
+            let burstDuration = this.waveNum === 10 ? 110 : 90;          
+            if (isRageMode) burstDuration = 5; 
+            if (this.currentPhase === 0) burstDuration = Math.floor(burstDuration * 1.5); 
+
             if (this.attackBurstTimer >= burstDuration) { this.inAttack = false; }
         }
     }
@@ -834,268 +1022,239 @@ class Boss {
   
   shoot() {
     playEnemyGun('tank');
-    const angle = Math.atan2(player.y - this.y, player.x - this.x);
+    let angle = Math.atan2(player.y - this.y, player.x - this.x);
+    let activeGuns = this.parts.filter(p => !p.isDead && ['GUN', 'BATTERY', 'TURRET', 'CANNON'].includes(p.label));
     
+    if (activeGuns.length === 0) return; 
+
+    // RAGE MODE voor ELKE boss, inclusief custom effect voor Wave 10
+    if (this.currentPhase === 1 && activeGuns.length === 1) {
+        let g = activeGuns[0];
+        let bx = this.x + g.relX; let by = this.y + g.relY;
+        let ba = Math.atan2(player.y - by, player.x - bx);
+        
+        // 7 kogels per burst in wijd verspreide vorm
+        for(let i = -3; i <= 3; i++) {
+            let b = new Bullet(bx, by, Math.cos(ba + i*0.12)*14, Math.sin(ba + i*0.12)*14, '#ff0000', true, 'NONE', false, 60);
+            b.size = 11; bullets.push(b);
+        }
+        
+        // Wave 10 voegt ook nog wanhopige bommen toe in rage mode!
+        if (this.waveNum === 10) {
+            if (Math.random() < 0.3) {
+                let bomb = new Bullet(bx, by, Math.cos(ba)*5, Math.sin(ba)*5, '#ff8800', true, 'NONE', true, 100, { bigExplosion: true });
+                bomb.size = 20; bullets.push(bomb);
+            }
+        }
+        return; 
+    }
+
     if (this.waveNum === 3) {
       if (this.pattern === 0) {
-        // Twin cannons from engine positions
-        let b1 = new Bullet(this.x-90, this.y+40, Math.cos(angle-0.2)*5, Math.sin(angle-0.2)*5, '#ffaa00', true, 'NONE', false, 50); b1.size=9; bullets.push(b1);
-        let b2 = new Bullet(this.x+90, this.y+40, Math.cos(angle+0.2)*5, Math.sin(angle+0.2)*5, '#ffaa00', true, 'NONE', false, 50); b2.size=9; bullets.push(b2);
+        activeGuns.forEach(g => {
+            let bx = this.x + g.relX; let by = this.y + g.relY;
+            let ba = Math.atan2(player.y - by, player.x - bx);
+            let b = new Bullet(bx, by, Math.cos(ba)*10, Math.sin(ba)*10, '#ffaa00', true, 'NONE', false, 50); b.size=9; bullets.push(b);
+        });
       } else if (this.pattern === 1) {
-        // Spread fan from gun turrets
-        for (let i=-2; i<=2; i++) {
-          let b = new Bullet(this.x, this.y-50, Math.cos(angle+i*0.2)*5.5, Math.sin(angle+i*0.2)*5.5, '#ff3300', true, 'NONE', false, 55); b.size=8; bullets.push(b);
-        }
+         activeGuns.forEach(g => {
+             let bx = this.x + g.relX; let by = this.y + g.relY;
+             for (let i=-1; i<=1; i++) {
+                 let b = new Bullet(bx, by, Math.cos(angle+i*0.2)*11, Math.sin(angle+i*0.2)*11, '#ff3300', true, 'NONE', false, 55); b.size=8; bullets.push(b);
+             }
+         });
       } else if (this.pattern === 2) {
-        // Missile from core
-        let b = new Bullet(this.x, this.y+20, Math.cos(angle)*7, Math.sin(angle)*7, '#ff6600', true, 'NONE', false, 80, {isMissile:true}); b.size=12; bullets.push(b);
+        activeGuns.forEach(g => {
+            let b = new Bullet(this.x + g.relX, this.y + g.relY, Math.cos(angle)*14, Math.sin(angle)*14, '#ff6600', true, 'NONE', false, 80, {isMissile:true}); b.size=12; bullets.push(b);
+        });
       }
     } else if (this.waveNum === 6) {
       if (this.pattern === 0) {
-        // Broadside: wide spread from batteries
-        for (let i=-3; i<=3; i++) {
-          let b = new Bullet(this.x+i*40, this.y, Math.cos(angle+i*0.12)*5, Math.sin(angle+i*0.12)*5, '#ffcc00', true, 'NONE', false, 60); b.size=8; bullets.push(b);
-        }
+        activeGuns.forEach(g => {
+            let bx = this.x + g.relX; let by = this.y + g.relY; let ba = Math.atan2(player.y - by, player.x - bx);
+            for (let i=-1; i<=1; i++) {
+                let b = new Bullet(bx, by, Math.cos(ba+i*0.12)*10, Math.sin(ba+i*0.12)*10, '#ffcc00', true, 'NONE', false, 60); b.size=8; bullets.push(b);
+            }
+        });
       } else if (this.pattern === 1) {
-        // Homing missiles 
-        for (let i=-2; i<=2; i++) {
-          let b = new Bullet(this.x+i*50, this.y+20, Math.cos(angle+i*0.15)*5.5, Math.sin(angle+i*0.15)*5.5, '#ff4400', true, 'NONE', false, 100, {isMissile:true}); b.size=11; bullets.push(b);
-        }
+        activeGuns.forEach((g, idx) => {
+            let offset = (idx - activeGuns.length/2) * 0.15;
+            let b = new Bullet(this.x + g.relX, this.y + g.relY, Math.cos(angle+offset)*11, Math.sin(angle+offset)*11, '#ff4400', true, 'NONE', false, 100, {isMissile:true}); b.size=11; bullets.push(b);
+        });
       } else if (this.pattern === 2) {
-        // Radial burst
-        for (let i=0; i<8; i++) {
-          let a = (i/8)*Math.PI*2; let b = new Bullet(this.x, this.y, Math.cos(a)*6, Math.sin(a)*6, '#00ffff', true, 'NONE', false, 45); b.size=8; bullets.push(b);
-        }
+        activeGuns.forEach(g => {
+            for (let i=0; i<4; i++) {
+              let a = (i/4)*Math.PI*2 + frameCount*0.1; let b = new Bullet(this.x + g.relX, this.y + g.relY, Math.cos(a)*12, Math.sin(a)*12, '#00ffff', true, 'NONE', false, 45); b.size=8; bullets.push(b);
+            }
+        });
       } else if (this.pattern === 3) {
-        // Triple column fire
-        [-80,0,80].forEach(ox => {
-          let b = new Bullet(this.x+ox, this.y-60, Math.cos(angle)*6, Math.sin(angle)*6, '#ff8800', true, 'NONE', false, 70); b.size=10; bullets.push(b);
+        activeGuns.forEach(g => {
+          let b = new Bullet(this.x + g.relX, this.y + g.relY, Math.cos(angle)*12, Math.sin(angle)*12, '#ff8800', true, 'NONE', false, 70); b.size=10; bullets.push(b);
         });
       }
     } else if (this.waveNum === 9) {
-      if (this.pattern === 0) {
-        // All 4 turrets fire simultaneously at player
-        [-140,-60,60,140].forEach(ox => {
-          let b = new Bullet(this.x+ox, this.y-30, Math.cos(angle)*5.5, Math.sin(angle)*5.5, '#ffaa00', true, 'NONE', false, 65); b.size=9; bullets.push(b);
-        });
-      } else if (this.pattern === 1) {
-        // Massive missile barrage
-        for (let i=0; i<6; i++) {
-          let a = angle + (i/6)*Math.PI*0.8 - Math.PI*0.4;
-          let b = new Bullet(this.x, this.y+30, Math.cos(a)*6, Math.sin(a)*6, '#ff3300', true, 'NONE', false, 85, {isMissile:true}); b.size=11; bullets.push(b);
-        }
-      } else if (this.pattern === 2) {
-        // Rotating ring
-        for (let i=0; i<12; i++) {
-          let a = (i/12)*Math.PI*2 + frameCount*0.05;
-          let b = new Bullet(this.x, this.y, Math.cos(a)*7, Math.sin(a)*7, '#ff0000', true, 'NONE', false, 55); b.size=8; bullets.push(b);
-        }
-      } else if (this.pattern === 3) {
-        // Double arc
-        for (let i=-4; i<=4; i++) {
-          let b = new Bullet(this.x+i*35, this.y+50, Math.cos(angle+i*0.09)*5, Math.sin(angle+i*0.09)*5, '#00ffff', true, 'NONE', false, 55); b.size=8; bullets.push(b);
-        }
-      } else if (this.pattern === 4) {
-        // Focused laser-style burst (3 fast bullets)
-        for (let k=0; k<3; k++) setTimeout(() => {
-          if (!gameRunning) return;
-          let b = new Bullet(this.x, this.y-20, Math.cos(angle)*9, Math.sin(angle)*9, '#ffff00', true, 'NONE', false, 90); b.size=10; bullets.push(b);
-        }, k*120);
-      }
+      activeGuns.forEach(g => {
+          let bx = this.x + g.relX; let by = this.y + g.relY;
+          let ba = Math.atan2(player.y - by, player.x - bx);
+          
+          if (this.pattern === 0) {
+             let b = new Bullet(bx, by, Math.cos(ba)*11, Math.sin(ba)*11, '#ff0000', true, 'NONE', false, 90); b.size=11; bullets.push(b);
+          } else if (this.pattern === 1) {
+             let b = new Bullet(bx, by, Math.cos(ba)*12, Math.sin(ba)*12, '#ff6600', true, 'NONE', false, 120, {isMissile:true}); b.size=13; bullets.push(b);
+          } else if (this.pattern === 2) {
+             for (let i=-1; i<=1; i++) {
+                 let b = new Bullet(bx, by, Math.cos(ba+i*0.2)*10, Math.sin(ba+i*0.2)*10, '#ff2200', true, 'NONE', false, 75); b.size=9; bullets.push(b);
+             }
+          } else if (this.pattern === 3) {
+             let b = new Bullet(bx, by, Math.cos(ba)*14, Math.sin(ba)*14, '#ffcc00', true, 'NONE', false, 80); b.size=9; bullets.push(b);
+          } else {
+             let a = frameCount * 0.1; 
+             let b = new Bullet(bx, by, Math.cos(a)*16, Math.sin(a)*16, '#ff8800', true, 'NONE', false, 100, {isMissile:true}); b.size=12; bullets.push(b);
+          }
+      });
     } else if (this.waveNum === 10) {
-      if (this.pattern === 0) {
-        // Full broadside from all 5 cannons
-        [-190,-100,0,100,190].forEach((ox, i) => {
-          let b = new Bullet(this.x+ox, this.y-70, Math.cos(angle+((i-2)*0.1))*6, Math.sin(angle+((i-2)*0.1))*6, '#ff0000', true, 'NONE', false, 90); b.size=11; bullets.push(b);
+        activeGuns.forEach((g, idx) => {
+            let bx = this.x + g.relX; let by = this.y + g.relY;
+            let ba = Math.atan2(player.y - by, player.x - bx);
+
+            if (this.pattern === 0) {
+                let b = new Bullet(bx, by, Math.cos(ba)*7, Math.sin(ba)*7, '#ff0000', true, 'NONE', false, 60);
+                b.size = 9; bullets.push(b);
+            } else if (this.pattern === 1) {
+                if (idx % 2 === 0) {
+                    let b = new Bullet(bx, by, Math.cos(ba)*3.5, Math.sin(ba)*3.5, '#ff8800', true, 'NONE', true, 90, { bigExplosion: true });
+                    b.size = 18; bullets.push(b);
+                }
+            } else if (this.pattern === 2) {
+                if (idx === 0 || idx === activeGuns.length - 1) {
+                    enemies.push(new Enemy(wave, 'boss_missile', bx, by));
+                }
+            } else {
+                if (idx % 2 !== 0) {
+                    let b = new Bullet(bx, by, Math.cos(ba)*6, Math.sin(ba)*6, '#ff0000', true, 'NONE', false, 60);
+                    b.size = 9; bullets.push(b);
+                } else if (Math.random() < 0.5) {
+                    let b = new Bullet(bx, by, Math.cos(ba)*3, Math.sin(ba)*3, '#ff8800', true, 'NONE', true, 90, { bigExplosion: true });
+                    b.size = 18; bullets.push(b);
+                }
+            }
         });
-      } else if (this.pattern === 1) {
-        // Missile volley
-        for (let i=-3; i<=3; i++) {
-          let b = new Bullet(this.x+i*60, this.y, Math.cos(angle+i*0.12)*6, Math.sin(angle+i*0.12)*6, '#ff6600', true, 'NONE', false, 120, {isMissile:true}); b.size=13; bullets.push(b);
-        }
-      } else if (this.pattern === 2) {
-        // Triple ring spread
-        for (let ring=0; ring<3; ring++) {
-          for (let i=0; i<8; i++) {
-            let a = (i/8)*Math.PI*2 + ring*0.2;
-            let b = new Bullet(this.x, this.y, Math.cos(a)*(5+ring*2), Math.sin(a)*(5+ring*2), '#ff2200', true, 'NONE', false, 75); b.size=9; bullets.push(b);
-          }
-        }
-      } else if (this.pattern === 3) {
-        // Aimed dense fan
-        for (let i=-5; i<=5; i++) {
-          let b = new Bullet(this.x+i*30, this.y-80, Math.cos(angle+i*0.08)*7, Math.sin(angle+i*0.08)*7, '#ffcc00', true, 'NONE', false, 80); b.size=9; bullets.push(b);
-        }
-      } else if (this.pattern === 4) {
-        // Heavy missile + ring combo
-        for (let i=0; i<6; i++) {
-          let a = (i/6)*Math.PI*2;
-          let b = new Bullet(this.x, this.y, Math.cos(a)*8, Math.sin(a)*8, '#ff8800', true, 'NONE', false, 100, {isMissile:true}); b.size=12; bullets.push(b);
-        }
-      } else if (this.pattern === 5) {
-        // Rapid triple aimed shot
-        for (let k=0; k<3; k++) setTimeout(() => {
-          if (!gameRunning) return;
-          let ang = Math.atan2(player.y - this.y, player.x - this.x);
-          for (let i=-1; i<=1; i++) {
-            let b = new Bullet(this.x, this.y, Math.cos(ang+i*0.15)*9, Math.sin(ang+i*0.15)*9, '#ffffff', true, 'NONE', false, 110); b.size=11; bullets.push(b);
-          }
-        }, k*150);
-      }
     }
   }
   
   draw() {
     ctx.save(); ctx.translate(this.x, this.y);
     
+    if (this.isCrashing) {
+        let crashScale = Math.max(0.01, 1 - (75 - this.crashTimer)/75);
+        ctx.scale(crashScale, crashScale);
+        ctx.rotate(Math.sin(this.crashTimer * 0.1) * 0.2);
+    }
+
     if (this.waveNum === 10) {
-      // Final Colossus: massive spider-like fortress
       ctx.shadowBlur = 30; ctx.shadowColor = '#ff0000';
-      // Huge central body
       ctx.fillStyle = '#1a0000';
       ctx.beginPath(); ctx.ellipse(0, 0, 250, 140, 0, 0, Math.PI*2); ctx.fill();
       ctx.strokeStyle = '#ff2200'; ctx.lineWidth = 3; ctx.stroke();
-      // Side wing struts
       [-230,-150,150,230].forEach(ox => {
         ctx.fillStyle = '#110000'; ctx.fillRect(ox > 0 ? ox-10 : ox, -25, 20, 130);
         ctx.strokeStyle = '#882200'; ctx.lineWidth = 1.5; ctx.strokeRect(ox > 0 ? ox-10 : ox, -25, 20, 130);
       });
-      // Front weapon bay
       ctx.fillStyle = '#2a0000'; ctx.fillRect(-100, -130, 200, 40);
       ctx.strokeStyle = '#ff4400'; ctx.lineWidth = 2; ctx.strokeRect(-100,-130,200,40);
-      // Reactor core visible
-      const pulse = Math.sin(frameCount * 0.15) * 0.5 + 0.5;
+      const pulse = Math.sin(frameCount * 0.3) * 0.5 + 0.5;
       ctx.shadowBlur = 40 * pulse; ctx.shadowColor = '#ff0000';
       ctx.fillStyle = `rgba(255,${Math.floor(50*pulse)},0,0.6)`;
       ctx.beginPath(); ctx.arc(0, 10, 45, 0, Math.PI*2); ctx.fill();
-      // Armor plates
       ctx.strokeStyle = '#660000'; ctx.lineWidth = 1;
       for (let i=-200; i<=200; i+=80) { ctx.beginPath(); ctx.moveTo(i,-100); ctx.lineTo(i,120); ctx.stroke(); }
     } else if (this.waveNum === 3) {
-      // Iron Hawk Fortress: rectangular body with wings and turrets
       ctx.shadowBlur = 20; ctx.shadowColor = '#00ff00';
-      // Main body
       ctx.fillStyle = '#1a2a1a'; ctx.fillRect(-140, -50, 280, 130);
-      // Wing extensions
       ctx.fillStyle = '#111a11';
       ctx.beginPath(); ctx.moveTo(-140,-20); ctx.lineTo(-210,40); ctx.lineTo(-210,70); ctx.lineTo(-140,70); ctx.fill();
       ctx.beginPath(); ctx.moveTo(140,-20); ctx.lineTo(210,40); ctx.lineTo(210,70); ctx.lineTo(140,70); ctx.fill();
-      // Bridge
       ctx.fillStyle = '#223322'; ctx.fillRect(-50, -95, 100, 55);
-      // Armor plating lines
       ctx.strokeStyle = '#336633'; ctx.lineWidth = 2;
       ctx.strokeRect(-140,-50,280,130); ctx.strokeRect(-50,-95,100,55);
       ctx.beginPath(); ctx.moveTo(-140,10); ctx.lineTo(140,10); ctx.stroke();
     } else if (this.waveNum === 6) {
-      // Steel Carrier: massive flat carrier ship
       ctx.shadowBlur = 20; ctx.shadowColor = '#00ff00';
-      // Carrier deck
       ctx.fillStyle = '#112211'; ctx.fillRect(-200, -60, 400, 160);
-      // Side protrusions
       ctx.fillStyle = '#0d1a0d';
       ctx.fillRect(-250, -20, 60, 100); ctx.fillRect(190, -20, 60, 100);
-      // Tower structure
       ctx.fillStyle = '#1a3a1a'; ctx.fillRect(-30, -110, 60, 60);
       ctx.fillStyle = '#224422'; ctx.fillRect(-60, -80, 120, 30);
-      // Deck lines
       ctx.strokeStyle = '#336633'; ctx.lineWidth = 1.5;
       ctx.strokeRect(-200,-60,400,160);
       for (let i=-150; i<=150; i+=75) { ctx.beginPath(); ctx.moveTo(i,-60); ctx.lineTo(i,100); ctx.stroke(); }
     } else if (this.waveNum === 9) {
-      // Doom Zeppelin: massive airship
       ctx.shadowBlur = 20; ctx.shadowColor = '#ff4400';
-      // Gas envelope (big ellipse)
       ctx.fillStyle = '#221111';
       ctx.beginPath(); ctx.ellipse(0, -10, 180, 90, 0, 0, Math.PI*2); ctx.fill();
       ctx.strokeStyle = '#662222'; ctx.lineWidth = 2; ctx.stroke();
-      // Gondola/hull under balloon
       ctx.fillStyle = '#331a1a'; ctx.fillRect(-80, 60, 160, 50);
       ctx.strokeStyle = '#ff4400'; ctx.lineWidth = 1.5; ctx.strokeRect(-80,60,160,50);
-      // Fins
       ctx.fillStyle = '#2a1010';
       ctx.beginPath(); ctx.moveTo(-180,0); ctx.lineTo(-220,-40); ctx.lineTo(-220,40); ctx.fill();
       ctx.beginPath(); ctx.moveTo(180,0); ctx.lineTo(220,-40); ctx.lineTo(220,40); ctx.fill();
-      // Stripes on envelope
       ctx.strokeStyle = '#441111'; ctx.lineWidth = 1;
       for (let i=-3; i<=3; i++) { ctx.beginPath(); ctx.ellipse(0, -10, 180, 90, i*0.2, 0, Math.PI*2); ctx.stroke(); }
     }
     
-    // Draw all parts (phase-colored)
     for (let part of this.parts) {
       ctx.save(); ctx.translate(part.relX, part.relY);
       if (part.isDead) {
           ctx.fillStyle = '#1a1a1a';
-          if (frameCount % 4 === 0) spawnParticles(this.x + part.relX, this.y + part.relY, '#ff4400', 2);
+          if (frameCount % 8 === 0) spawnParticles(this.x + part.relX, this.y + part.relY, '#ff4400', 2);
       } else {
           const isCurrentTarget = (part.phase === this.currentPhase);
-          const pulse = Math.sin(frameCount * 0.1) * 0.5 + 0.5;
-          if (isCurrentTarget) {
-            ctx.shadowColor = part.phase === 0 ? '#00ff66' : (part.phase === 1 ? '#ff8800' : '#ff2200');
-            ctx.shadowBlur = 15 + 10 * pulse;
-          } else {
-            ctx.shadowBlur = 0;
-          }
           ctx.fillStyle = part.isDead ? '#111' : (isCurrentTarget ? part.color : '#444455');
       }
-      // Draw part shape based on label
+      
       if (part.label === 'ENGINE' || part.label === 'PROPELLER') {
           ctx.beginPath(); ctx.arc(0, 0, part.radius, 0, Math.PI*2); ctx.fill();
-          if (!part.isDead && part.phase === this.currentPhase) {
-            ctx.strokeStyle = '#00ff66'; ctx.lineWidth = 2; ctx.stroke();
-            // Propeller spin
-            for (let k=0; k<2; k++) {
-              let a = (frameCount * 0.15) + k * Math.PI;
-              ctx.fillStyle = '#00aa44';
-              ctx.beginPath(); ctx.ellipse(Math.cos(a)*part.radius, Math.sin(a)*part.radius, 10, 5, a, 0, Math.PI*2); ctx.fill();
-            }
-          }
       } else if (part.label === 'GUN' || part.label === 'BATTERY' || part.label === 'TURRET' || part.label === 'CANNON') {
           ctx.fillRect(-part.radius*0.7, -part.radius*0.7, part.radius*1.4, part.radius*1.4);
           if (!part.isDead && part.phase === this.currentPhase) {
-            ctx.strokeStyle = part.label === 'CANNON' ? '#ff0000' : '#ff8800'; ctx.lineWidth = 2; ctx.strokeRect(-part.radius*0.7,-part.radius*0.7,part.radius*1.4,part.radius*1.4);
-            // Gun barrel
             const barrelAngle = Math.atan2(player.y-(this.y+part.relY), player.x-(this.x+part.relX));
             ctx.save(); ctx.rotate(barrelAngle);
             ctx.fillStyle = '#888'; ctx.fillRect(-4, -part.radius, 8, part.radius);
             ctx.restore();
           }
-      } else { // HULL / GONDOLA / CORE
+      } else { 
           ctx.beginPath(); ctx.arc(0, 0, part.radius*0.6, 0, Math.PI*2); ctx.fill();
-          if (!part.isDead && part.phase === this.currentPhase) {
-            ctx.strokeStyle = '#ff2200'; ctx.lineWidth = 3; ctx.stroke();
-            if (part.label === 'CORE') {
-              const cPulse = Math.sin(frameCount * 0.2) * 0.5 + 0.5;
-              ctx.shadowBlur = 30 * cPulse; ctx.shadowColor = '#ff0000';
-              ctx.strokeStyle = '#ff4400'; ctx.lineWidth = 5; ctx.stroke();
-            }
-          }
       }
       
-      // HP bar for current phase parts
-      if (!part.isDead && part.phase === this.currentPhase) {
-          let barW = part.radius * 2.2;
-          ctx.fillStyle = '#300'; ctx.fillRect(-barW/2, part.radius+5, barW, 5);
-          ctx.fillStyle = part.phase===0 ? '#00ff66' : (part.phase===1 ? '#ff8800' : '#ff2200');
-          ctx.fillRect(-barW/2, part.radius+5, barW*(part.hp/part.maxHp), 5);
+
+// VISUAL TARGET INDICATOR
+             if (!part.isDead && part.phase === this.currentPhase) {
+          ctx.save();
+          // Gebruik cyaan voor Boss 10 omdat de boss zelf al rood is!
+          let crossColor = this.waveNum === 10 ? '#00ffff' : '#ff0000';
+          ctx.strokeStyle = crossColor; 
+          ctx.lineWidth = 4;
+          ctx.shadowColor = crossColor;
+          ctx.shadowBlur = 15;
+          ctx.setLineDash([12, 12]);
+          ctx.lineDashOffset = -frameCount * 1.5; // Draait lekker snel
+          ctx.beginPath();
+          let glowRadius = part.radius + 15 + Math.sin(frameCount * 0.2) * 5;
+          ctx.arc(0, 0, glowRadius, 0, Math.PI*2);
+          ctx.stroke();
+          
+          ctx.setLineDash([]);
+          ctx.lineWidth = 3;
+          let crossLen = 16;
+          ctx.beginPath();
+          ctx.moveTo(0, -glowRadius - crossLen); ctx.lineTo(0, -glowRadius - 4);
+          ctx.moveTo(0, glowRadius + 4); ctx.lineTo(0, glowRadius + crossLen);
+          ctx.moveTo(-glowRadius - crossLen, 0); ctx.lineTo(-glowRadius - 4, 0);
+          ctx.moveTo(glowRadius + 4, 0); ctx.lineTo(glowRadius + crossLen, 0);
+          ctx.stroke();
+          ctx.restore();
       }
       ctx.restore();
-    }
-    
-    // Phase label
-    if (!this.introPhase) {
-      ctx.font = 'bold 14px Arial'; ctx.textAlign = 'center';
-      let phaseTargets = this.waveNum === 10 ? 
-        ['TARGET: ENGINES', 'TARGET: CANNONS', 'TARGET: CORE'] :
-        ['TARGET: ENGINES', 'TARGET: GUNS', 'TARGET: HULL'];
-      ctx.fillStyle = this.currentPhase===0 ? '#00ff66' : (this.currentPhase===1 ? '#ff8800' : '#ff2200');
-      let labelY = (this.targetY < height/2) ? 180 : -180;
-      ctx.fillText(this.name + ' — ' + phaseTargets[Math.min(this.currentPhase,2)], 0, labelY);
-      // Overall HP bar (total remaining across all undestroyed parts)
-      let totalRemaining = this.parts.reduce((s,p) => s + Math.max(0, p.hp), 0);
-      let bw = 280;
-      ctx.fillStyle = '#330000'; ctx.fillRect(-bw/2, labelY - 16, bw, 8);
-      ctx.fillStyle = '#ff2200'; ctx.fillRect(-bw/2, labelY - 16, bw * Math.max(0, totalRemaining/this.maxHp), 8);
-      ctx.strokeStyle = '#ff4400'; ctx.lineWidth=1; ctx.strokeRect(-bw/2, labelY - 16, bw, 8);
     }
     
     if(this.slowed) { ctx.fillStyle = 'rgba(0,100,255,0.15)'; ctx.beginPath(); ctx.arc(0,0,260,0,Math.PI*2); ctx.fill(); }
@@ -1108,117 +1267,307 @@ class SecretBoss {
     this.isBoss = true; this.isSecret = true; 
     let opMult = 1 + (currentWeaponTier * 0.2);
     this.name = "EUGENBURG DOOM-ENTITY";
-    this.currentPhase = 99; // Use phase 99 - all parts use isEngine flag directly (legacy)
+    this.currentPhase = 0; 
+    this.isCrashing = false; this.crashTimer = 0;
     
-    let totalBossHp = 30000 * opMult;
-    let numEngines = 5;
-    let hpPerEngine = totalBossHp / numEngines;
+    this.parts = [];
+    let totalBossHp = 0;
     
-    this.parts = [
-        {id: 'engine1', relX: -80, relY: 40, hp: hpPerEngine, maxHp: hpPerEngine, radius: 30, color: '#335533', isDead: false, isEngine: true, phase: 99},
-        {id: 'engine2', relX: 80, relY: 40, hp: hpPerEngine, maxHp: hpPerEngine, radius: 30, color: '#335533', isDead: false, isEngine: true, phase: 99},
-        {id: 'engine3', relX: -40, relY: -60, hp: hpPerEngine, maxHp: hpPerEngine, radius: 28, color: '#335533', isDead: false, isEngine: true, phase: 99},
-        {id: 'engine4', relX: 40, relY: -60, hp: hpPerEngine, maxHp: hpPerEngine, radius: 28, color: '#335533', isDead: false, isEngine: true, phase: 99},
-        {id: 'engine5', relX: 0, relY: -100, hp: hpPerEngine, maxHp: hpPerEngine, radius: 32, color: '#335533', isDead: false, isEngine: true, phase: 99}
-    ];
+    // Phase 0: Engines
+    let engineHp = 7000 * opMult;
+    this.parts.push({id:'eng_ll', relX:-120, relY:80, hp:engineHp, maxHp:engineHp, radius:32, color:'#335533', isDead:false, phase:0, label:'ENGINE'});
+    this.parts.push({id:'eng_l', relX:-60, relY:100, hp:engineHp, maxHp:engineHp, radius:30, color:'#335533', isDead:false, phase:0, label:'ENGINE'});
+    this.parts.push({id:'eng_c', relX:0, relY:110, hp:engineHp, maxHp:engineHp, radius:34, color:'#335533', isDead:false, phase:0, label:'ENGINE'});
+    this.parts.push({id:'eng_r', relX:60, relY:100, hp:engineHp, maxHp:engineHp, radius:30, color:'#335533', isDead:false, phase:0, label:'ENGINE'});
+    this.parts.push({id:'eng_rr', relX:120, relY:80, hp:engineHp, maxHp:engineHp, radius:32, color:'#335533', isDead:false, phase:0, label:'ENGINE'});
+    totalBossHp += engineHp * 5;
+    
+    // Phase 1: Guns (top corners)
+    let gunHp = 2500 * opMult;
+    this.parts.push({id:'gun_ll', relX:-150, relY:-80, hp:gunHp, maxHp:gunHp, radius:26, color:'#ff8800', isDead:false, phase:1, label:'GUN'});
+    this.parts.push({id:'gun_l', relX:-70, relY:-90, hp:gunHp, maxHp:gunHp, radius:26, color:'#ff8800', isDead:false, phase:1, label:'GUN'});
+    this.parts.push({id:'gun_r', relX:70, relY:-90, hp:gunHp, maxHp:gunHp, radius:26, color:'#ff8800', isDead:false, phase:1, label:'GUN'});
+    this.parts.push({id:'gun_rr', relX:150, relY:-80, hp:gunHp, maxHp:gunHp, radius:26, color:'#ff8800', isDead:false, phase:1, label:'GUN'});
+    totalBossHp += gunHp * 4;
+    
+    // Phase 2: Core (center)
+    let coreHp = 5000 * opMult;
+    this.parts.push({id:'core', relX:0, relY:0, hp:coreHp, maxHp:coreHp, radius:70, color:'#ff2200', isDead:false, phase:2, label:'CORE'});
+    totalBossHp += coreHp;
     
     this.hp = totalBossHp; this.maxHp = totalBossHp;
-    this.x = width / 2; this.y = -300; this.targetX = width / 2; this.targetY = 200; 
+    this.x = width / 2; this.y = -300;
+    this.targetY = 180;
     this.introPhase = true;
-    this.speed = 3.0; this.burnTimer = 0; this.angleOffset = 0; this.hitCount = 0; this.slowed = false;
+    this.speed = 5.5; this.burnTimer = 0; this.angleOffset = 0; this.hitCount = 0; this.slowed = false;
     this.fireTimer = 0; this.pattern = 0; this.patternTimer = 0;
+    this.attackPhaseTimer = 0; this.attackInterval = 40; 
+    this.inAttack = false; this.attackBurstTimer = 0;
+    this.direction = 1;
   }
   
   checkCurrentPhase() {
-    // SecretBoss: any part hit is fine, boss dies when hp <= 0
+    let phaseParts = this.parts.filter(p => p.phase === this.currentPhase && !p.isDead);
+    if (phaseParts.length === 0) {
+      this.currentPhase++;
+      if (this.currentPhase === 1) { 
+        showNotification("ENGINES DOWN! TARGET THE GUNS!"); cameraShake = 20; 
+      }
+      else if (this.currentPhase === 2) { 
+        showNotification("GUNS DESTROYED! TARGET THE CORE!"); cameraShake = 30; 
+      }
+    }
   }
   
   update() {
-    if (this.burnTimer > 0) { this.burnTimer--; this.hp -= 3.0 * player.damageMultiplier; if(frameCount%5===0) spawnParticles(this.x, this.y, '#ff4400', 5); }
-    
-    let aliveEngines = this.parts.filter(p => p.isEngine && !p.isDead);
-    if (aliveEngines.length === 0) { this.hp = 0; return; }
-    
-    let engineDamageRatio = (this.parts.length - aliveEngines.length) / this.parts.length;
-    const baseSpeedMult = this.slowed ? 0.60 : 1;
-    const speedPenalty = 1 - (engineDamageRatio * 0.5);
-    const speedMult = baseSpeedMult * speedPenalty;
-    
-    if (this.introPhase) {
-        if (this.y < this.targetY) { this.y += 2.5 * speedMult; } else { this.y = this.targetY; this.introPhase = false; }
-    } else {
-        this.x = width/2 + Math.sin(frameCount * 0.015) * (width/2.5) * speedMult; 
-        this.y = 200 + Math.cos(frameCount * 0.012) * 80; 
+    if (this.isCrashing) {
+        this.crashTimer--;
+        this.y += 3.0;
+        this.x += Math.sin(this.crashTimer * 0.2) * 5;
+        spawnParticles(this.x + (Math.random()-0.5)*150, this.y + (Math.random()-0.5)*150, '#ff4400', 10);
+        spawnParticles(this.x + (Math.random()-0.5)*150, this.y, '#222222', 15);
+        if (this.crashTimer <= 0) { finalizeKillEnemy(this); }
+        return;
+    }
+
+    if (this.burnTimer > 0) { 
+      this.burnTimer--; 
+      if (this.currentPhase <= 2) {
+        let activeParts = this.parts.filter(p => p.phase === this.currentPhase && !p.isDead);
+        if (activeParts.length > 0) {
+          let burnTarget = activeParts[Math.floor(Math.random() * activeParts.length)];
+          burnTarget.hp -= 2.4 * player.damageMultiplier;
+          if(frameCount%5===0) spawnParticles(this.x + burnTarget.relX, this.y + burnTarget.relY, '#ff4400', 3);
+          if (burnTarget.hp <= 0) { burnTarget.isDead = true; burnTarget.hp = 0; this.checkCurrentPhase(); }
+        }
+      }
     }
     
-    if(!inIntermission){
-        this.angleOffset += 0.08 * speedMult; this.patternTimer++;
-        if (this.patternTimer >= 180) { this.pattern = (this.pattern + 1) % 5; this.patternTimer = 0; }
-        this.fireTimer++; 
-        let fireInterval = this.pattern === 0 ? 8 : (this.pattern === 1 ? 35 : (this.pattern === 3 ? 5 : (this.pattern === 4 ? 10 : 15)));
-        if (this.fireTimer >= fireInterval) { this.fireTimer = 0; this.shoot(); }
+    if (this.currentPhase > 2) return;
+    
+    let baseSpeedMult = this.slowed ? 0.60 : 1.0;
+    let totalEngines = this.parts.filter(p => p.label === 'ENGINE').length;
+    let aliveEngines = this.parts.filter(p => p.label === 'ENGINE' && !p.isDead).length;
+    if (totalEngines > 0) {
+        baseSpeedMult *= (0.3 + 0.7 * (aliveEngines / totalEngines));
+    }
+    
+    if (this.introPhase) {
+        if (this.y < this.targetY) { this.y += 5.0 * baseSpeedMult; } 
+        else { this.y = this.targetY; this.introPhase = false; }
+    } else {
+        this.x += this.speed * 3.0 * this.direction * baseSpeedMult;
+        if(this.x < width*0.15 || this.x > width*0.85) { this.direction *= -1; }
+    }
+    
+    if (!inIntermission && !this.introPhase) {
+        this.patternTimer++;
+        this.attackPhaseTimer++;
+        
+        let activeGunsCount = this.parts.filter(p => !p.isDead && p.label === 'GUN').length;
+        let isRageMode = (this.currentPhase === 1 && activeGunsCount === 1);
+
+        if (this.attackPhaseTimer >= this.attackInterval) {
+            this.attackPhaseTimer = 0;
+            this.inAttack = true;
+            this.attackBurstTimer = 0;
+            this.pattern = (this.pattern + 1) % 4;
+            this.attackInterval = 50 + Math.random() * 30;
+            if (isRageMode) this.attackInterval = 25; 
+        }
+        
+        if (this.inAttack) {
+            this.attackBurstTimer++;
+            this.fireTimer++;
+            
+            let fireInterval = 20;
+            
+            if (this.currentPhase === 0) {
+                fireInterval *= 5; 
+            } else if (isRageMode) {
+                fireInterval = 8; 
+            } else if (this.currentPhase === 1) {
+                fireInterval = Math.max(4, Math.floor(fireInterval * 0.6));
+            }
+
+            if (this.fireTimer >= fireInterval) { this.fireTimer = 0; this.shoot(); }
+            
+            let burstDuration = 100;          
+            if (isRageMode) burstDuration = 5; 
+            if (this.currentPhase === 0) burstDuration = Math.floor(burstDuration * 1.5);
+
+            if (this.attackBurstTimer >= burstDuration) { this.inAttack = false; }
+        }
     }
   }
   
   shoot() {
     playEnemyGun('tank');
-    const angle = Math.atan2(player.y - this.y, player.x - this.x);
+    let angle = Math.atan2(player.y - this.y, player.x - this.x);
+    let activeGuns = this.parts.filter(p => !p.isDead && p.label === 'GUN');
     
-    if (this.pattern === 0) {
-        bullets.push(new Bullet(this.x - 60, this.y + 30, Math.cos(angle - 0.5)*6, Math.sin(angle - 0.5)*6, '#ff0000', true, 'NONE', false, 60, { isMissile: true }));
-        bullets.push(new Bullet(this.x + 60, this.y + 30, Math.cos(angle + 0.5)*6, Math.sin(angle + 0.5)*6, '#ff0000', true, 'NONE', false, 60, { isMissile: true }));
-    } else if (this.pattern === 1) {
-        for(let i=0; i<16; i++) { 
-            let a = (i/16) * Math.PI * 2 + this.angleOffset;
-            bullets.push(new Bullet(this.x, this.y, Math.cos(a)*7, Math.sin(a)*7, '#ffaa00', true, 'NONE', false, 70));
+    if (activeGuns.length === 0) return; 
+
+    // RAGE MODE when only 1 gun left
+    if (this.currentPhase === 1 && activeGuns.length === 1) {
+        let g = activeGuns[0];
+        let bx = this.x + g.relX; let by = this.y + g.relY;
+        let ba = Math.atan2(player.y - by, player.x - bx);
+        
+        // 5 bullets in wide spread
+        for(let i = -2; i <= 2; i++) {
+            let b = new Bullet(bx, by, Math.cos(ba + i*0.15)*14, Math.sin(ba + i*0.15)*14, '#ff0000', true, 'NONE', false, 70);
+            b.size = 11; bullets.push(b);
         }
-    } else if (this.pattern === 2) {
-        for (let i = -4; i <= 4; i++) {
-            let a = angle + (i / 4) * 0.5;
-            bullets.push(new Bullet(this.x, this.y, Math.cos(a)*5, Math.sin(a)*5, '#00ffff', true, 'NONE', false, 45));
+        
+        // Add bombs
+        if (Math.random() < 0.4) {
+            let bomb = new Bullet(bx, by, Math.cos(ba)*5, Math.sin(ba)*5, '#ff8800', true, 'NONE', true, 120, { bigExplosion: true });
+            bomb.size = 20; bullets.push(bomb);
         }
-    } else if (this.pattern === 3) {
-        for (let i = -2; i <= 2; i++) {
-            let vx = Math.cos(angle + i * 0.3) * 6;
-            let vy = Math.sin(angle + i * 0.3) * 6;
-            bullets.push(new Bullet(this.x, this.y, vx, vy, '#ffffff', true, 'NONE', false, 50));
+        return; 
+    }
+
+    if (this.currentPhase === 0) {
+        // Engine phase - light fire
+        activeGuns.forEach(g => {
+            let bx = this.x + g.relX; let by = this.y + g.relY;
+            let ba = Math.atan2(player.y - by, player.x - bx);
+            let b = new Bullet(bx, by, Math.cos(ba)*9, Math.sin(ba)*9, '#ffff00', true, 'NONE', false, 40); b.size=7; bullets.push(b);
+        });
+    } else if (this.currentPhase === 1) {
+        // Gun phase - heavy fire
+        if (this.pattern === 0) {
+            activeGuns.forEach(g => {
+                let bx = this.x + g.relX; let by = this.y + g.relY;
+                let ba = Math.atan2(player.y - by, player.x - bx);
+                for (let i=-1; i<=1; i++) {
+                    let b = new Bullet(bx, by, Math.cos(ba+i*0.15)*11, Math.sin(ba+i*0.15)*11, '#ff3300', true, 'NONE', false, 60); b.size=8; bullets.push(b);
+                }
+            });
+        } else if (this.pattern === 1) {
+            activeGuns.forEach((g, idx) => {
+                let bx = this.x + g.relX; let by = this.y + g.relY;
+                let ba = Math.atan2(player.y - by, player.x - bx);
+                let b = new Bullet(bx, by, Math.cos(ba)*10, Math.sin(ba)*10, '#ff4400', true, 'NONE', true, 100, {isMissile:true}); b.size=11; bullets.push(b);
+            });
+        } else if (this.pattern === 2) {
+            activeGuns.forEach(g => {
+                for (let i=0; i<3; i++) {
+                  let a = (i/3)*Math.PI*2 + frameCount*0.1; let b = new Bullet(this.x + g.relX, this.y + g.relY, Math.cos(a)*12, Math.sin(a)*12, '#00ffff', true, 'NONE', false, 50); b.size=8; bullets.push(b);
+                }
+            });
+        } else if (this.pattern === 3) {
+            activeGuns.forEach(g => {
+              let ba = Math.atan2(player.y-(this.y+g.relY), player.x-(this.x+g.relX));
+              let b = new Bullet(this.x + g.relX, this.y + g.relY, Math.cos(ba)*12, Math.sin(ba)*12, '#ff8800', true, 'NONE', false, 70); b.size=9; bullets.push(b);
+            });
         }
-    } else if (this.pattern === 4) {
-        for (let i = -3; i <= 3; i++) {
-            let b = new Bullet(this.x + (i * 40), this.y, Math.cos(angle + i*0.1)*7, Math.sin(angle + i*0.1)*7, '#ff3300', true, 'NONE', false, 80, { isMissile: true });
-            bullets.push(b);
+    } else if (this.currentPhase === 2) {
+        // Core phase - varied attack
+        let corePart = this.parts.find(p => p.label === 'CORE');
+        if (!corePart) return;
+        
+        let bx = this.x + corePart.relX; let by = this.y + corePart.relY;
+        let ba = Math.atan2(player.y - by, player.x - bx);
+        
+        if (this.pattern === 0) {
+            for(let i = -4; i <= 4; i++) { 
+                let a = (i/9) * Math.PI * 2 + this.angleOffset;
+                bullets.push(new Bullet(bx, by, Math.cos(a)*14, Math.sin(a)*14, '#ff00ff', true, 'NONE', false, 80));
+            }
+        } else if (this.pattern === 1) {
+            for (let i = -3; i <= 3; i++) {
+                let b = new Bullet(bx, by, Math.cos(ba)*12, Math.sin(ba)*12, '#ff0000', true, 'NONE', true, 130, {bigExplosion:true}); b.size=18; bullets.push(b);
+            }
+        } else if (this.pattern === 2) {
+            for (let i = -2; i <= 2; i++) {
+                let a = ba + (i / 2) * 0.4;
+                bullets.push(new Bullet(bx, by, Math.cos(a)*13, Math.sin(a)*13, '#ffcc00', true, 'NONE', false, 90));
+            }
+        } else {
+            for (let i = 0; i < 8; i++) {
+                let a = (i/8) * Math.PI * 2;
+                bullets.push(new Bullet(bx, by, Math.cos(a)*15, Math.sin(a)*15, '#ff2200', true, 'NONE', false, 75));
+            }
         }
     }
   }
   
   draw() {
-    ctx.save(); ctx.translate(this.x, this.y); ctx.shadowBlur = 15; ctx.shadowColor = '#ff0000';
-    ctx.fillStyle = '#330033'; ctx.beginPath();
+    ctx.save(); ctx.translate(this.x, this.y);
+    
+    if (this.isCrashing) {
+        let crashScale = Math.max(0.01, 1 - (75 - this.crashTimer)/75);
+        ctx.scale(crashScale, crashScale);
+        ctx.rotate(Math.sin(this.crashTimer * 0.1) * 0.2);
+    }
+
+    ctx.shadowBlur = 20; ctx.shadowColor = '#ff0000';
+    ctx.fillStyle = '#220022'; ctx.beginPath();
     for (let i = 0; i < 5; i++) {
-      let a = (i / 5) * Math.PI * 2 + frameCount * 0.02;
-      let x = Math.cos(a) * 100; let y = Math.sin(a) * 140;
+      let a = (i / 5) * Math.PI * 2 + frameCount * 0.04;
+      let x = Math.cos(a) * 110; let y = Math.sin(a) * 150;
       if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
     }
     ctx.closePath(); ctx.fill(); ctx.strokeStyle = '#ff0000'; ctx.lineWidth = 3; ctx.stroke();
     
+    // Draw all parts with proper targeting indicators
     for (let part of this.parts) {
-        if (part.isEngine) {
-            ctx.save(); ctx.translate(part.relX, part.relY);
-            if (part.isDead) {
-                ctx.fillStyle = '#1a1a1a';
-                if (frameCount % 3 === 0) spawnParticles(this.x + part.relX, this.y + part.relY, '#ff4400', 4);
-            } else {
-                ctx.fillStyle = part.color;
-                let pulse = Math.sin(frameCount * 0.1) * 0.5 + 1;
-                ctx.shadowColor = '#00ff00'; ctx.shadowBlur = 20 * pulse;
-            }
-            ctx.beginPath(); ctx.arc(0, 0, part.radius, 0, Math.PI * 2); ctx.fill();
-            if (!part.isDead) { ctx.strokeStyle = '#00ff00'; ctx.lineWidth = 2; ctx.stroke(); }
+      ctx.save(); ctx.translate(part.relX, part.relY);
+      
+      if (part.isDead) {
+          ctx.fillStyle = '#1a1a1a';
+          if (frameCount % 8 === 0) spawnParticles(this.x + part.relX, this.y + part.relY, '#ff4400', 2);
+      } else {
+          const isCurrentTarget = (part.phase === this.currentPhase);
+          ctx.fillStyle = part.isDead ? '#111' : (isCurrentTarget ? part.color : '#444455');
+      }
+      
+      if (part.label === 'ENGINE') {
+          ctx.beginPath(); ctx.arc(0, 0, part.radius, 0, Math.PI*2); ctx.fill();
+      } else if (part.label === 'GUN') {
+          ctx.fillRect(-part.radius*0.7, -part.radius*0.7, part.radius*1.4, part.radius*1.4);
+          if (!part.isDead && part.phase === this.currentPhase) {
+            const barrelAngle = Math.atan2(player.y-(this.y+part.relY), player.x-(this.x+part.relX));
+            ctx.save(); ctx.rotate(barrelAngle);
+            ctx.fillStyle = '#888'; ctx.fillRect(-4, -part.radius, 8, part.radius);
             ctx.restore();
-        }
+          }
+      } else if (part.label === 'CORE') {
+          ctx.beginPath(); ctx.arc(0, 0, part.radius, 0, Math.PI*2); ctx.fill();
+      }
+      
+      // VISUAL TARGET INDICATOR
+      if (!part.isDead && part.phase === this.currentPhase) {
+          ctx.save();
+          let crossColor = '#ff00ff';
+          ctx.strokeStyle = crossColor; 
+          ctx.lineWidth = 4;
+          ctx.shadowColor = crossColor;
+          ctx.shadowBlur = 15;
+          ctx.setLineDash([12, 12]);
+          ctx.lineDashOffset = -frameCount * 1.5;
+          ctx.beginPath();
+          let glowRadius = part.radius + 15 + Math.sin(frameCount * 0.2) * 5;
+          ctx.arc(0, 0, glowRadius, 0, Math.PI*2);
+          ctx.stroke();
+          
+          ctx.setLineDash([]);
+          ctx.lineWidth = 3;
+          let crossLen = 16;
+          ctx.beginPath();
+          ctx.moveTo(0, -glowRadius - crossLen); ctx.lineTo(0, -glowRadius - 4);
+          ctx.moveTo(0, glowRadius + 4); ctx.lineTo(0, glowRadius + crossLen);
+          ctx.moveTo(-glowRadius - crossLen, 0); ctx.lineTo(-glowRadius - 4, 0);
+          ctx.moveTo(glowRadius + 4, 0); ctx.lineTo(glowRadius + crossLen, 0);
+          ctx.stroke();
+          ctx.restore();
+      }
+      ctx.restore();
     }
     
-    if(this.slowed) { ctx.fillStyle = 'rgba(0,100,255,0.3)'; ctx.beginPath(); ctx.arc(0,0, 250, 0, Math.PI*2); ctx.fill(); }
+    if(this.slowed) { ctx.fillStyle = 'rgba(0,100,255,0.15)'; ctx.beginPath(); ctx.arc(0,0,260,0,Math.PI*2); ctx.fill(); }
     ctx.restore();
   }
 }
@@ -1226,19 +1575,19 @@ class SecretBoss {
 class Bullet {
   constructor(x, y, vx, vy, color, isEnemy, element = 'NONE', explosive = false, damage = 10, special = {}) {
     this.x = x; this.y = y; this.vx = vx; this.vy = vy; this.color = color; this.isEnemy = isEnemy; this.element = element; this.explosive = explosive;
-    this.marked = false; this.size = isEnemy ? 7 : (explosive ? 6 : 4.5); this.life = 110; this.damage = damage;
+    this.marked = false; this.size = isEnemy ? (explosive && special && special.bigExplosion ? 18 : 7) : (explosive ? 6 : 4.5); this.life = 55; this.damage = damage;
     this.special = special; this.hitList = new Set();
   }
   update() {
     if (this.special && this.special.homing && !this.isEnemy) {
         let nearest = null; let minDist = 400;
-        enemies.forEach(e => { let d = Math.hypot(this.x - e.x, this.y - e.y); if (d < minDist) { minDist = d; nearest = e; } });
+        enemies.forEach(e => { let d = Math.hypot(this.x - e.x, this.y - e.y); if (d < minDist && !e.isCrashing) { minDist = d; nearest = e; } });
         if (nearest) {
             let tA = Math.atan2(nearest.y - this.y, nearest.x - this.x);
             let cA = Math.atan2(this.vy, this.vx);
             let diff = tA - cA;
             while (diff > Math.PI) diff -= Math.PI * 2; while (diff < -Math.PI) diff += Math.PI * 2;
-            cA += diff * 0.15; 
+            cA += diff * 0.30; 
             let spd = Math.hypot(this.vx, this.vy);
             this.vx = Math.cos(cA) * spd; this.vy = Math.sin(cA) * spd;
         }
@@ -1246,7 +1595,7 @@ class Bullet {
 
     this.x += this.vx; this.y += this.vy; if (!this.isEnemy) this.life--;
     
-    if (this.special && this.special.isMissile && frameCount % 2 === 0) {
+    if (this.special && this.special.isMissile && frameCount % 4 === 0) {
         spawnParticles(this.x, this.y - 10, '#aaaaaa', 2); spawnParticles(this.x, this.y - 12, '#ff4400', 1);
     }
 
@@ -1254,6 +1603,7 @@ class Bullet {
       if (this.explosive && !this.isEnemy) {
         spawnParticles(this.x, this.y, this.color, 48);
         enemies.forEach(other => { 
+            if (other.isCrashing) return;
             if (other.isBoss) {
                 for (let part of other.parts) {
                     if (!part.isDead && Math.hypot(this.x - (other.x + part.relX), this.y - (other.y + part.relY)) < 115) {
@@ -1285,7 +1635,13 @@ class Bullet {
         ctx.fillStyle = '#ff8800'; ctx.beginPath(); ctx.moveTo(0, 8); ctx.lineTo(4, 0); ctx.lineTo(4, -12); ctx.lineTo(-4, -12); ctx.lineTo(-4, 0); ctx.fill();
         ctx.fillStyle = '#ff2200'; ctx.fillRect(-2, -16, 4, 4);
     } else if (this.isEnemy) { 
-        ctx.fillStyle = this.color; ctx.beginPath(); ctx.arc(0, 0, this.size, 0, Math.PI*2); ctx.fill(); 
+        if (this.explosive && this.special && this.special.bigExplosion) {
+            ctx.shadowBlur = 20; ctx.shadowColor = '#ff6600';
+            ctx.fillStyle = '#ff3300'; ctx.beginPath(); ctx.arc(0, 0, this.size, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#ffaa00'; ctx.beginPath(); ctx.arc(0, 0, this.size*0.6, 0, Math.PI*2); ctx.fill();
+        } else {
+            ctx.fillStyle = this.color; ctx.beginPath(); ctx.arc(0, 0, this.size, 0, Math.PI*2); ctx.fill(); 
+        }
     } else { 
         if(this.explosive) { ctx.fillStyle = '#ffaa00'; ctx.beginPath(); ctx.arc(0,0,this.size*1.5, 0, Math.PI*2); ctx.fill(); } 
         ctx.fillStyle = this.color; ctx.fillRect(-2.5, -13, 5, 26); 
@@ -1297,11 +1653,11 @@ class Bullet {
 class EnemyDescent {
   constructor(x, y, isBoss = false, isPlayer = false) {
     this.x = x; this.y = y; this.isBoss = isBoss; this.isPlayer = isPlayer;
-    this.vy = 1.5 + Math.random() * 0.8; this.vx = (Math.random() - 0.5) * 0.3; 
+    this.vy = 3.0 + Math.random() * 1.6; this.vx = (Math.random() - 0.5) * 0.6; 
     this.life = 1.0; this.marked = false; this.flameTimer = 0;
   }
   update() {
-    this.x += this.vx; this.y += this.vy; this.life -= 0.012; this.flameTimer++;
+    this.x += this.vx; this.y += this.vy; this.life -= 0.024; this.flameTimer++;
     if (this.flameTimer >= 1) {
       const flameColors = ['#ff6600', '#ffaa00', '#ff4400', '#ffdd00'];
       const color = flameColors[Math.floor(Math.random() * flameColors.length)];
@@ -1326,12 +1682,12 @@ class EnemyDescent {
 class Wreck {
   constructor(x, y, type = 'normal', rotation = 0) {
     this.x = x; this.y = y; this.type = type; this.rotation = rotation;
-    this.vy = 0.5 + Math.random() * 1.5; this.vx = (Math.random() - 0.5) * 3;
-    this.angularVel = (Math.random() - 0.5) * 0.1; this.life = 1.0; this.marked = false; this.smokeTimer = 0;
+    this.vy = 1.0 + Math.random() * 3.0; this.vx = (Math.random() - 0.5) * 6;
+    this.angularVel = (Math.random() - 0.5) * 0.2; this.life = 1.0; this.marked = false; this.smokeTimer = 0;
   }
   update() {
-    this.x += this.vx; this.y += this.vy; this.rotation += this.angularVel; this.life -= 0.008; this.smokeTimer++;
-    if (this.smokeTimer >= 3) {
+    this.x += this.vx; this.y += this.vy; this.rotation += this.angularVel; this.life -= 0.016; this.smokeTimer++;
+    if (this.smokeTimer >= 2) {
       spawnParticles(this.x, this.y, this.type === 'boss' ? '#ff4400' : '#888888', 1); spawnParticles(this.x, this.y, '#444444', 1);
       this.smokeTimer = 0;
     }
@@ -1354,37 +1710,34 @@ class Wreck {
 
 class PlayerEscort {
   constructor(side) {
-    // side: -1 = left, 1 = right
     this.side = side;
     this.x = player.x + side * 80;
     this.y = player.y;
     this.fireTimer = 0;
-    this.life = 1200; // 20 seconds at 60fps
+    this.life = 600; 
     this.marked = false;
   }
   update() {
-    // Follow player
     this.x = player.x + this.side * 80;
     this.y = player.y - 10;
     this.life--;
     if (this.life <= 0) { this.marked = true; return; }
     this.fireTimer++;
-    if (this.fireTimer >= 20) { // same fire rate as before, 1 bullet
+    if (this.fireTimer >= 10) { 
       this.fireTimer = 0;
-      // Find nearest enemy
       let target = null; let minDist = 1200;
-      enemies.forEach(e => { let d = Math.hypot(this.x-e.x, this.y-e.y); if(d<minDist){minDist=d;target=e;} });
+      enemies.forEach(e => { if(e.isCrashing)return; let d = Math.hypot(this.x-e.x, this.y-e.y); if(d<minDist){minDist=d;target=e;} });
       if (target) {
         let angle = Math.atan2(target.y - this.y, target.x - this.x);
-        bullets.push(new Bullet(this.x, this.y-20, Math.cos(angle)*16, Math.sin(angle)*16, '#00ffcc', false, 'NONE', false, 40));
+        bullets.push(new Bullet(this.x, this.y-20, Math.cos(angle)*32, Math.sin(angle)*32, '#00ffcc', false, 'NONE', false, 40));
         playRealisticGun('support');
       } else {
-        bullets.push(new Bullet(this.x, this.y-20, 0, -16, '#00ffcc', false, 'NONE', false, 40));
+        bullets.push(new Bullet(this.x, this.y-20, 0, -32, '#00ffcc', false, 'NONE', false, 40));
       }
     }
   }
   draw() {
-    let alpha = this.life < 120 ? this.life / 120 : 1;
+    let alpha = this.life < 60 ? this.life / 60 : 1;
     ctx.save(); ctx.globalAlpha = alpha; ctx.translate(this.x, this.y); ctx.scale(1.4, 1.4);
     ctx.shadowBlur = 12; ctx.shadowColor = '#00ffcc';
     ctx.fillStyle = '#113355';
@@ -1398,15 +1751,14 @@ class PlayerEscort {
 let escortShips = [];
 
 function spawnEscortShips() {
-  // Remove old escorts first
   escortShips = [];
-  escortShips.push(new PlayerEscort(-1)); // left
-  escortShips.push(new PlayerEscort(1));  // right
+  escortShips.push(new PlayerEscort(-1)); 
+  escortShips.push(new PlayerEscort(1));  
   showNotification("ESCORT SHIPS DEPLOYED!");
 }
 
 class Drop {
-  constructor(x, y, type) { this.x = x; this.y = y; this.vy = 2.2; this.type = type; this.marked = false; }
+  constructor(x, y, type) { this.x = x; this.y = y; this.vy = 4.4; this.type = type; this.marked = false; }
   update() { this.y += this.vy; if(this.y > height) this.marked = true; }
   draw() {
     ctx.save(); ctx.translate(this.x, this.y); ctx.shadowBlur = 16;
@@ -1420,11 +1772,16 @@ class Drop {
         ctx.fillStyle = '#00d4ff'; ctx.shadowColor = '#00d4ff'; ctx.beginPath(); ctx.moveTo(0, -13); ctx.lineTo(9, 7); ctx.lineTo(0, 3); ctx.lineTo(-9, 7); ctx.fill(); 
     }
     else if (this.type === 'MEDAL') { 
-        // Golden Medals (XP Replacement)
         ctx.fillStyle = '#ffaa00'; ctx.shadowColor = '#ffaa00'; ctx.shadowBlur = 10;
         ctx.beginPath(); ctx.arc(0, 0, 12, 0, Math.PI*2); ctx.fill();
         ctx.fillStyle = '#ffd700'; ctx.beginPath(); ctx.arc(0, 0, 8, 0, Math.PI*2); ctx.fill();
         ctx.fillStyle = '#fff'; ctx.font = 'bold 12px Arial'; ctx.textAlign = 'center'; ctx.fillText('★', 0, 4);
+    }
+    else if (this.type === 'SCORE_COIN') { 
+        ctx.fillStyle = '#0088ff'; ctx.shadowColor = '#00d4ff'; ctx.shadowBlur = 15;
+        ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#c0c0c0'; ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 14px Arial'; ctx.textAlign = 'center'; ctx.fillText('$', 0, 5);
     }
     else if (this.type === 'ESCORT') { 
         ctx.fillStyle = '#00ffcc'; ctx.shadowColor = '#00ffcc'; ctx.shadowBlur = 14;
@@ -1441,8 +1798,8 @@ class Drop {
 }
 
 class Particle {
-  constructor(x, y, color) { this.x = x; this.y = y; this.vx = (Math.random() - 0.5) * 9; this.vy = (Math.random() - 0.5) * 9; this.life = 1.0; this.color = color; this.size = 1.6 + Math.random() * 2.4; }
-  update() { this.x += this.vx; this.y += this.vy; this.life -= 0.045; }
+  constructor(x, y, color) { this.x = x; this.y = y; this.vx = (Math.random() - 0.5) * 18; this.vy = (Math.random() - 0.5) * 18; this.life = 1.0; this.color = color; this.size = 1.6 + Math.random() * 2.4; }
+  update() { this.x += this.vx; this.y += this.vy; this.life -= 0.09; }
   draw() { ctx.globalAlpha = this.life; ctx.fillStyle = this.color; ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI*2); ctx.fill(); ctx.globalAlpha = 1.0; }
 }
 
@@ -1450,12 +1807,12 @@ class GalaxyBackground {
   constructor() { this.layers = []; this.initLayers(); }
   initLayers() {
     this.layers = []; 
-    this.layers.push({ speed: 0.1, stars: [], color: () => `rgba(${200 + Math.random() * 55}, ${200 + Math.random() * 55}, ${255}, ${0.3 + Math.random() * 0.4})`, size: () => 0.5 + Math.random() * 1.5, count: 300 });
-    this.layers.push({ speed: 0.3, clouds: [], color: () => ['rgba(100, 50, 200, 0.15)', 'rgba(150, 50, 255, 0.15)', 'rgba(200, 100, 255, 0.15)', 'rgba(50, 100, 255, 0.15)'][Math.floor(Math.random()*4)], size: () => 30 + Math.random() * 70, count: 15 });
-    this.layers.push({ speed: 0.5, stars: [], color: () => `rgba(${255}, ${200 + Math.random() * 55}, ${100 + Math.random() * 155}, ${0.5 + Math.random() * 0.3})`, size: () => 1 + Math.random() * 2, count: 200 });
+    this.layers.push({ speed: 0.2, stars: [], color: () => `rgba(${200 + Math.random() * 55}, ${200 + Math.random() * 55}, ${255}, ${0.3 + Math.random() * 0.4})`, size: () => 0.5 + Math.random() * 1.5, count: 300 });
+    this.layers.push({ speed: 0.6, clouds: [], color: () => ['rgba(100, 50, 200, 0.15)', 'rgba(150, 50, 255, 0.15)', 'rgba(200, 100, 255, 0.15)', 'rgba(50, 100, 255, 0.15)'][Math.floor(Math.random()*4)], size: () => 30 + Math.random() * 70, count: 15 });
+    this.layers.push({ speed: 1.0, stars: [], color: () => `rgba(${255}, ${200 + Math.random() * 55}, ${100 + Math.random() * 155}, ${0.5 + Math.random() * 0.3})`, size: () => 1 + Math.random() * 2, count: 200 });
     
     this.layers.push({ 
-        speed: 0.7, objects: [], 
+        speed: 1.4, objects: [], 
         createObject: () => { 
             const rand = Math.random();
             if (rand < 0.2) return { type: 'earth', size: 60 + Math.random()*40, color: '#2266cc' };
@@ -1466,7 +1823,7 @@ class GalaxyBackground {
         }, 
         count: 8 
     });
-    this.layers.push({ speed: 1.0, stars: [], color: () => `rgba(255, 255, 255, ${0.7 + Math.random() * 0.3})`, size: () => 2 + Math.random() * 3, count: 100 });
+    this.layers.push({ speed: 2.0, stars: [], color: () => `rgba(255, 255, 255, ${0.7 + Math.random() * 0.3})`, size: () => 2 + Math.random() * 3, count: 100 });
     for (let layer of this.layers) {
       if (layer.stars) for (let i = 0; i < layer.count; i++) layer.stars.push({ x: Math.random() * width, y: Math.random() * height * 2 - height, size: layer.size(), color: layer.color() });
       if (layer.clouds) for (let i = 0; i < layer.count; i++) layer.clouds.push({ x: Math.random() * width, y: Math.random() * height * 2 - height, size: layer.size(), color: layer.color() });
@@ -1549,7 +1906,7 @@ function initGame() {
   bullets = []; enemies = []; drops = []; particles = []; allies = []; wrecks = []; escortShips = [];
   score = 0; xp = 0; xpNeeded = 1000; wave = 1; waveTimer = 0; currentLevel = 1; bossActive = false; elementPower = 0; 
   pendingSupportPasses = 0; supportPassTimer = 0; bossSupportsUsed = 0; supportSpawnDelay = 0; globalFormationIdCounter = 0;
-  superPowerMeter = 0; superPowerReady = false;
+  superPowerMeter = 0; superPowerReady = false; aceSpawnedThisWave = false;
   equippedCards = [null, null, null];
   inIntermission = false; intermissionTimer = 0;
   
@@ -1557,52 +1914,55 @@ function initGame() {
   galaxyBackground = new GalaxyBackground(); 
   startBGM('normal'); 
   updateCardsDisplay(); updateElementBar(); updateUI(); updateSuperPowerUI();
-  animate();
+  requestAnimationFrame(animate);
 }
 
-// Luftwaffe formation 1: Diagonal Kette - 3 ships in a diagonal line
 function spawnDiagonalKette() {
     globalFormationIdCounter++;
-    const dir = Math.random() > 0.5 ? 1 : -1; // left-to-right or right-to-left slant
+    const dir = Math.random() > 0.5 ? 1 : -1; 
     const cx = Math.random() * (width - 300) + 150;
-    const spacing = 90; // distance between ships
+    const spacing = 90; 
     for (let i = 0; i < 3; i++) {
-        let e = new Enemy(wave, 'diagonal-kette');
-        e.x = cx + dir * i * spacing * 0.6;
-        e.y = -80 - i * spacing * 0.8;
-        e.speed = 1.8 + Math.random() * 0.4;
+        let e = new Enemy(wave, 'diagonal-kette', cx + dir * i * spacing * 0.6, -150 - i * spacing * 0.8);
+        e.speed = 3.6 + Math.random() * 0.8;
         e.formationId = globalFormationIdCounter;
         enemies.push(e);
     }
 }
 
-// Luftwaffe formation 2: Box/Square - 4 ships in 2x2 grid
 function spawnBox() {
     globalFormationIdCounter++;
     const cx = Math.random() * (width - 250) + 125;
     const offsets = [[-70,-60],[70,-60],[-70,60],[70,60]];
     offsets.forEach(([ox, oy]) => {
-        let e = new Enemy(wave, 'box');
-        e.x = cx + ox;
-        e.y = oy - 80;
-        e.speed = 1.7 + Math.random() * 0.3;
+        let e = new Enemy(wave, 'box', cx + ox, oy - 150);
+        e.speed = 3.4 + Math.random() * 0.6;
         e.formationId = globalFormationIdCounter;
         enemies.push(e);
     });
 }
 
-// Luftwaffe formation 3: Column — 4 ships straight down in line, bounce back when off screen
 function spawnColumnSweep() {
     globalFormationIdCounter++;
     const cx = Math.random() * (width - 200) + 100;
     for (let i = 0; i < 4; i++) {
-        let e = new Enemy(wave, 'column-sweep');
-        e.x = cx;
-        e.y = -80 - i * 100; // Staggered vertically in column
-        e.vy = 0; // 0 = moving down, -1 = reversed/moving up
+        let e = new Enemy(wave, 'column-sweep', cx, -150 - i * 100);
+        e.vy = 0; 
         e.rotation = Math.PI;
-        e.behavior = 'column-sweep';
-        e.speed = 1.9 + Math.random() * 0.3;
+        e.speed = 3.8 + Math.random() * 0.6;
+        e.formationId = globalFormationIdCounter;
+        enemies.push(e);
+    }
+}
+
+function spawnFighterWing() {
+    globalFormationIdCounter++;
+    const side = Math.random() > 0.5 ? 1 : -1;
+    const startX = side === 1 ? -150 : width + 150;
+    const startY = Math.random() * (height * 0.4);
+    for (let i = 0; i < 4; i++) {
+        let e = new Enemy(wave, 'fighter-wing', startX - side * i * 60, startY - i * 40);
+        e.side = side;
         e.formationId = globalFormationIdCounter;
         enemies.push(e);
     }
@@ -1611,16 +1971,32 @@ function spawnColumnSweep() {
 function spawnLogic() {
   if (bossActive || inIntermission || waveTimer >= FRAMES_PER_WAVE) return;
 
+  let isReturningActive = enemies.some(e => e.returning);
+  if (isReturningActive) return;
+
   let activeFormations = new Set();
-  enemies.forEach(e => { if (e.formationId) activeFormations.add(e.formationId); });
+  enemies.forEach(e => { if (e.formationId && !e.isCrashing) activeFormations.add(e.formationId); });
   
-  const maxFormations = wave >= 7 ? 3 : 2;
+  const maxFormations = wave >= 7 ? 2 : 1;
   
-  if (activeFormations.size < maxFormations || (activeFormations.size < maxFormations && Math.random() < 0.04)) {
+  if (activeFormations.size < maxFormations || (activeFormations.size < maxFormations && Math.random() < 0.02)) {
     const formType = Math.random();
-    if (formType < 0.33) spawnDiagonalKette();
-    else if (formType < 0.67) spawnBox();
-    else spawnColumnSweep();
+    if (formType < 0.25) spawnDiagonalKette();
+    else if (formType < 0.50) spawnBox();
+    else if (formType < 0.75) spawnColumnSweep();
+    else spawnFighterWing();
+  }
+
+  // Mini-boss Bomber spawn
+  if (wave >= 2 && Math.random() < 0.003) {
+      let bomberCount = enemies.filter(e => e.subType === 'bomber').length;
+      if (bomberCount === 0) enemies.push(new Enemy(wave, 'bomber'));
+  }
+
+  // Ace Pilot spawnt exact 1 keer op waveTimer === 450 per 3e wave
+  if (wave % 3 === 0 && !aceSpawnedThisWave && waveTimer === 450) {
+      enemies.push(new Enemy(wave, 'ace_pilot'));
+      aceSpawnedThisWave = true;
   }
 }
 
@@ -1632,6 +2008,7 @@ function checkCollisions() {
     if (!b.isEnemy) {
       for(let j = enemies.length - 1; j >= 0; j--) {
         let e = enemies[j];
+        if (e.isCrashing) continue; 
         if (!e.isBoss && b.hitList && b.hitList.has(e)) continue;
 
         let hitBox = e.isBoss ? (e.isSecret ? 100 : 68) : e.size;
@@ -1643,15 +2020,11 @@ function checkCollisions() {
             let hitEngine = false;
             for (let part of e.parts) {
                 if (b.hitList && b.hitList.has(part)) continue;
-                // Only hit parts in current phase that are alive
                 if (part.isDead || part.phase !== e.currentPhase) continue;
                 if (Math.hypot(b.x - (e.x + part.relX), b.y - (e.y + part.relY)) < part.radius + 12) {
                     hitEngine = true;
-                    // Damage only this specific part
                     part.hp -= finalDamage;
-                    // Only subtract from overall boss HP for tracking burn/total; 
-                    // DON'T kill boss by hp<=0 for phase bosses (currentPhase 0-2)
-                    if (e.currentPhase === 99) e.hp -= finalDamage; // SecretBoss only
+                    if (e.currentPhase === 99) e.hp -= finalDamage; 
                     playAudioFile(audioFiles.explosion);
                     if (part.hp <= 0) {
                         part.isDead = true; part.hp = 0;
@@ -1661,7 +2034,9 @@ function checkCollisions() {
                         cameraShake = 18;
                         if (e.checkCurrentPhase) e.checkCurrentPhase();
                     } else {
-                        spawnParticles(e.x + part.relX, e.y + part.relY, '#ffaa00', 20);
+                        spawnParticles(e.x + part.relX, e.y + part.relY, '#ffffff', 8);
+                        spawnParticles(e.x + part.relX, e.y + part.relY, '#00ffff', 12);
+                        spawnParticles(e.x + part.relX, e.y + part.relY, '#ffaa00', 15);
                     }
                     if (b.hitList) b.hitList.add(part);
                     break; 
@@ -1675,13 +2050,13 @@ function checkCollisions() {
             if (b.hitList) b.hitList.add(e);
         }
           
-        if (player.element === 'FIRE' || player.effects.burn || b.special.incendiary) e.burnTimer = 340;
-        if (player.element === 'WATER' || player.effects.slow) { e.slowed = true; setTimeout(() => e.slowed = false, 4600); }
-        if ((player.element === 'EARTH' && Math.random() < 0.15) || player.effects.stun) { e.stunned = true; e.stunTimer = 68; }
+        if (player.element === 'FIRE' || player.effects.burn || b.special.incendiary) e.burnTimer = 50;
+        if ((player.element === 'WATER' || player.effects.slow) && !e.isBoss) { e.slowed = true; setTimeout(() => e.slowed = false, 2300); }
+        if ((player.element === 'EARTH' && Math.random() < 0.15) || player.effects.stun) { e.stunned = true; e.stunTimer = 34; }
         
         if (player.effects.chain) {
            let nearest = null; let minDist = 200;
-           enemies.forEach(other => { if(other !== e && !other.isBoss) { let d = Math.hypot(e.x - other.x, e.y - other.y); if(d < minDist) { minDist = d; nearest = other; } } });
+           enemies.forEach(other => { if(other !== e && !other.isBoss && !other.isCrashing) { let d = Math.hypot(e.x - other.x, e.y - other.y); if(d < minDist) { minDist = d; nearest = other; } } });
            if (nearest) { nearest.hp -= b.damage * 0.8; spawnParticles((e.x + nearest.x)/2, (e.y + nearest.y)/2, '#00ffff', 5); if(nearest.hp <= 0) killEnemy(nearest); }
         }
         if (player.effects.pushback && !e.isBoss) { e.y -= 30; }
@@ -1692,6 +2067,7 @@ function checkCollisions() {
             spawnParticles(b.x, b.y, b.color, (b.special && b.special.bigExplosion) ? 80 : 48);
             
             enemies.forEach(other => {
+                if(other.isCrashing) return;
                 if (other.isBoss) {
                     for (let part of other.parts) {
                         if (!part.isDead && part.phase === other.currentPhase) {
@@ -1705,6 +2081,10 @@ function checkCollisions() {
                                     spawnParticles(other.x + part.relX, other.y + part.relY, '#ffaa00', 150);
                                     spawnParticles(other.x + part.relX, other.y + part.relY, '#000000', 80);
                                     if (other.checkCurrentPhase) other.checkCurrentPhase();
+                                } else {
+                                    spawnParticles(other.x + part.relX, other.y + part.relY, '#ffffff', 10);
+                                    spawnParticles(other.x + part.relX, other.y + part.relY, '#00ffff', 15);
+                                    spawnParticles(other.x + part.relX, other.y + part.relY, '#ffaa00', 20);
                                 }
                             }
                         }
@@ -1721,7 +2101,7 @@ function checkCollisions() {
         if (b.special && b.special.splinter && !b.special.isSplinterPiece) {
             for(let k=0; k<5; k++) {
                 let ang = Math.random() * Math.PI * 2;
-                let sb = new Bullet(b.x, b.y, Math.cos(ang)*8, Math.sin(ang)*8, '#ffaa00', false, 'NONE', false, b.damage * 0.4, {isSplinterPiece: true});
+                let sb = new Bullet(b.x, b.y, Math.cos(ang)*16, Math.sin(ang)*16, '#ffaa00', false, 'NONE', false, b.damage * 0.4, {isSplinterPiece: true});
                 bullets.push(sb);
             }
         }
@@ -1731,31 +2111,41 @@ function checkCollisions() {
         if (e.hp <= 0 && !e.isBoss) killEnemy(e);
       }
     } else {
-      if (player.effects.invincible) { b.marked = true; continue; }
+      if (player.effects.invincible || player.isCrashing) { b.marked = true; continue; }
       
       let damage = b.damage; 
       if (player.effects.elementArmor || player.effects.armor) damage *= (0.85 / player.defenseMultiplier); 
       if (player.effects.shield) damage *= 0.80;
+      
+      let hitRadius = 46;
+      if (b.explosive && b.special && b.special.bigExplosion) hitRadius = 85;
 
-      if (Math.hypot(b.x - player.x, b.y - player.y) < 46) {
+      if (Math.hypot(b.x - player.x, b.y - player.y) < hitRadius) {
         player.takeDamage(damage, b.x - player.x, b.y - player.y); b.marked = true;
-        spawnParticles(player.x, player.y, '#ff6600', 20); 
-        if (player.isDead()) showGameOver();
+        if (b.explosive) {
+            spawnParticles(b.x, b.y, '#ff4400', 60);
+            spawnParticles(b.x, b.y, '#ffff00', 40);
+            cameraShake = 15;
+        } else {
+            spawnParticles(player.x, player.y, '#ff6600', 20); 
+        }
       }
     }
   }
   
   enemies.forEach(e => {
+    if (e.isCrashing) return;
     if (e.isBoss) {
         if (e.currentPhase !== undefined && e.currentPhase !== 99 && e.currentPhase > 2) { killEnemy(e); }
-        else if (e.currentPhase === 99 && e.hp <= 0) { killEnemy(e); } // SecretBoss by HP
+        else if (e.currentPhase === 99 && e.hp <= 0) { killEnemy(e); } 
     } else {
-        if (player.effects.invincible) return; 
-        if (!e.isBoss && Math.hypot(e.x - player.x, e.y - player.y) < e.size + 42) {
-            let dmg = e.subType === 'kamikaze' ? 80 : (e.subType === 'tank' ? 70 : 25);
+        if (player.effects.invincible || player.isCrashing) return; 
+        
+        let crashHitRadius = e.subType === 'boss_missile' ? e.size + 42 : e.size + 42;
+        if (!e.isBoss && Math.hypot(e.x - player.x, e.y - player.y) < crashHitRadius) {
+            let dmg = e.subType === 'bomber' ? 100 : (e.subType === 'boss_missile' ? 150 : (e.subType === 'tank' ? 70 : 25));
             player.takeDamage(dmg, e.x - player.x, e.y - player.y); 
             e.hp = 0; spawnParticles(player.x, player.y, '#ff0000', 25); killEnemy(e);
-            if (player.isDead()) showGameOver();
         }
     }
   });
@@ -1767,19 +2157,28 @@ function startIntermission(isBoss) {
     inIntermission = true;
     intermissionTimer = 0;
     intermissionIsBoss = isBoss;
-    if (isBoss && wave === 11) startBGM('secret');
+    if (isBoss && bgmAudio) {
+        bgmAudio.pause(); bgmAudio.currentTime = 0; bgmAudio = null;
+    }
 }
 
 function killEnemy(e) {
-  score += e.isBoss ? 5000 : 150; 
+  if (e.isCrashing) return;
+  e.isCrashing = true;
+  e.crashTimer = e.isBoss ? 75 : 22;
+  playAudioFile(audioFiles.explosion); 
+}
+
+function finalizeKillEnemy(e) {
+  score += e.isBoss ? 5000 : (e.subType === 'bomber' ? 500 : 150); 
 
   if (e.isBoss) {
+    playAudioFile(audioFiles.bossExplosion);
     spawnParticles(e.x, e.y, '#ff4400', 100);
     spawnParticles(e.x, e.y, '#000000', 50);
     for (let i = 0; i < 4; i++) wrecks.push(new EnemyDescent(e.x + (Math.random() - 0.5) * 80, e.y, true, false));
     
-    // Boss Drops HUGE amounts of Medals
-    for (let i = 0; i < 25; i++) drops.push(new Drop(e.x + (Math.random()-0.5)*150, e.y + (Math.random()-0.5)*150, 'MEDAL'));
+    for (let i = 0; i < 25; i++) drops.push(new Drop(e.x + (Math.random()-0.5)*150, e.y + (Math.random()-0.5)*150, 'SCORE_COIN'));
     
     enemies = enemies.filter(en => en !== e);
     bossActive = false;
@@ -1789,24 +2188,19 @@ function killEnemy(e) {
         wave++; startBGM('normal'); startIntermission(false);
     }
   } else {
+    playAudioFile(audioFiles.explosion);
     spawnParticles(e.x, e.y, '#ff8844', 15);
     spawnParticles(e.x, e.y, '#ff4400', 8);
     wrecks.push(new EnemyDescent(e.x, e.y, false, false));
     enemies = enemies.filter(en => en !== e);
     
-    // Drop XP Medals (AOTL Style)
-    if (Math.random() < 0.10) { drops.push(new Drop(e.x, e.y, 'MEDAL')); }
+    if (Math.random() < (e.subType === 'bomber' ? 0.8 : 0.10)) { drops.push(new Drop(e.x, e.y, 'MEDAL')); }
+    if (e.subType === 'bomber' || Math.random() < 0.006) { drops.push(new Drop(e.x, e.y, 'ESCORT')); }
+    if (Math.random() < 0.006) { drops.push(new Drop(e.x, e.y, 'HEAL')); }
+    if (Math.random() < 0.02) { drops.push(new Drop(e.x, e.y, 'UPGRADE')); }
     
-    // 2% chance for escort ship drop
-    if (Math.random() < 0.02) { drops.push(new Drop(e.x, e.y, 'ESCORT')); }
-    
-    // 2% chance for heal drop
-    if (Math.random() < 0.02) { drops.push(new Drop(e.x, e.y, 'HEAL')); }
-    
-    // 1% chance for weapon upgrade
-    if (Math.random() < 0.01) { drops.push(new Drop(e.x, e.y, 'UPGRADE')); }
     if (!superPowerReady) {
-      superPowerMeter++;
+      superPowerMeter += e.subType === 'bomber' ? 5 : 1;
       if (superPowerMeter >= getSuperPowerNeeded()) {
         superPowerMeter = getSuperPowerNeeded();
         superPowerReady = true;
@@ -1840,13 +2234,8 @@ function activateSquadron() {
   superPowerMeter = 0;
   updateSuperPowerUI();
   showNotification("SQUADRON INBOUND!");
-  // Sound plays after 3 second delay
-  setTimeout(() => { if (gameRunning) playAudioFile(audioFiles.support); }, 3000);
-  supportSpawnDelay = 180; // 3 seconds visual delay
-}
-
-function spawnSupportWave() { 
-  showNotification("SQUADRON SUPPORT!");
+  setTimeout(() => { if (gameRunning) playAudioFile(audioFiles.support); }, 1);
+  supportSpawnDelay = 120; 
 }
 
 function updateSupportWaves() {
@@ -1860,17 +2249,15 @@ function updateSupportWaves() {
 
   if (pendingSupportPasses > 0 && allies.length === 0) {
     playEngineFlyby(); 
-    // LUFTWAFFE formation: 5 ships spread smoothly across full screen width
-    // Wide V-formation spread across the entire screen
     const formations = [
-        { x: width * 0.1, yBase: height + 280 }, // Far left, furthest back
+        { x: width * 0.1, yBase: height + 280 },
         { x: width * 0.28, yBase: height + 180 },
-        { x: width * 0.5,  yBase: height + 100 }, // Center lead ship
+        { x: width * 0.5,  yBase: height + 100 }, 
         { x: width * 0.72, yBase: height + 180 },
-        { x: width * 0.9, yBase: height + 280 }, // Far right, furthest back
+        { x: width * 0.9, yBase: height + 280 }, 
     ];
     formations.forEach((pos, i) => {
-        allies.push(new SupportShip(pos.x, pos.yBase, 0, -20, 0, i * 8));
+        allies.push(new SupportShip(pos.x, pos.yBase, 0, -40, 0, i * 4));
     });
     pendingSupportPasses--;
   }
@@ -1881,7 +2268,6 @@ function collectDrop(type) {
     Object.keys(player.parts).forEach(k => { player.parts[k].hp = Math.min(player.parts[k].max, player.parts[k].hp + player.parts[k].max * 0.52); });
     drawDamageModel(player.parts); showNotification("SYSTEMS REPAIRED");
   } else if (type === 'ESCORT') { 
-    // Spawn 2 escort ships (left and right of player), 10 second duration
     spawnEscortShips();
   } else if (type === 'UPGRADE') {
     if (currentWeaponTier < 6) {
@@ -1889,15 +2275,14 @@ function collectDrop(type) {
     } else {
         score += 2500; showNotification("MAX TIER! +2500 SCORE");
     }
+  } else if (type === 'SCORE_COIN') {
+    score += 500; playUpgradeSound();
   } else if (type === 'MEDAL') {
-    // AOTL Progression Currency System
     xp += 150; score += 50; playUpgradeSound();
     if (xp >= xpNeeded) {
         xp -= xpNeeded; xpNeeded = Math.floor(xpNeeded * 1.5);
         currentLevel++; playUpgradeSound();
         showNotification("LEVEL UP!");
-        // We can either auto-heal, or offer cards on level up.
-        // Let's grant a random Card automatically for AOTL style.
         setTimeout(() => {
             if (currentElement === 'NONE') { currentElement = ['FIRE', 'WATER', 'EARTH', 'AIR'][Math.floor(Math.random()*4)]; player.element = currentElement; }
             const elementCards = ELEMENT_CARDS[currentElement];
@@ -1974,8 +2359,6 @@ function updateUI() {
   document.getElementById('level').innerText = currentLevel;
   document.getElementById('weapon-tier-display').innerText = "WEAPON TIER: " + currentWeaponTier + (currentWeaponTier === 6 ? " (MAX)" : "");
   document.getElementById('wave-timer-fill').style.width = Math.max(0, 100 - (waveTimer / FRAMES_PER_WAVE * 100)) + '%';
-  
-  // XP/Medal progression Update
   document.getElementById('xp-bar-fill').style.width = Math.min(100, (xp / xpNeeded) * 100) + '%';
 }
 
@@ -2025,12 +2408,19 @@ document.addEventListener('keydown', e => {
   if (e.code === 'Space' && gameRunning) {
     e.preventDefault();
     if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
-    if (superPowerReady && !isPaused) activateSquadron();
+    if (superPowerReady && !isPaused && !player.isCrashing) activateSquadron();
   }
 });
 
-function animate() {
-  if (!gameRunning) return; requestAnimationFrame(animate); if (isPaused) return;
+function animate(timestamp) {
+  if (!gameRunning) return; 
+  requestAnimationFrame(animate); 
+  if (isPaused) return;
+
+  if (!timestamp) timestamp = performance.now();
+  if (timestamp - lastTimestamp < 16) return; 
+  lastTimestamp = timestamp;
+
   frameCount++; 
   
   let shakeX = 0, shakeY = 0;
@@ -2041,9 +2431,14 @@ function animate() {
 
   if (galaxyBackground) { galaxyBackground.update(); galaxyBackground.draw(); }
 
+  if (player.isCrashing) {
+      ctx.fillStyle = 'rgba(255, 0, 0, 0.3)';
+      ctx.fillRect(0, 0, width, height);
+  }
+
   if (inIntermission) {
       intermissionTimer++;
-      if (intermissionTimer === 60) { 
+      if (intermissionTimer === 30) { 
           if (intermissionIsBoss) {
               showNotification(wave === 11 ? "WARNING: UNKNOWN ENTITY DETECTED!" : (wave === 10 ? "⚠ FINAL FORTRESS INCOMING!" : "BOSS APPROACHING!"));
               if(wave===11 || wave===10) { document.getElementById('notification').style.color = '#ff0000'; document.getElementById('notification').style.textShadow = '0 0 20px #ff0000'; }
@@ -2051,8 +2446,8 @@ function animate() {
               showNotification("WAVE " + wave);
           }
       }
-      if (intermissionTimer >= 180) { 
-          inIntermission = false; waveTimer = 0; cardDroppedThisWave = false;
+      if (intermissionTimer >= 90) { 
+          inIntermission = false; waveTimer = 0; cardDroppedThisWave = false; aceSpawnedThisWave = false;
           if (intermissionIsBoss) {
               wave++; bossActive = true; bossSupportsUsed = 0;
               if (wave === 3) startBGM('boss1'); 
@@ -2068,14 +2463,13 @@ function animate() {
     if (waveTimer < FRAMES_PER_WAVE) {
         waveTimer++;
         let isDamaged = false; for(let k in player.parts){ if(player.parts[k].hp < player.parts[k].max) isDamaged = true; }
-        if (isDamaged && (waveTimer === 600 || waveTimer === 1300)) drops.push(new Drop(Math.random() * (width - 160) + 80, -30, 'HEAL'));
+        if (isDamaged && (waveTimer === 300 || waveTimer === 650)) drops.push(new Drop(Math.random() * (width - 160) + 80, -30, 'HEAL'));
         
-        if (waveTimer === 1000 && !cardDroppedThisWave && Math.random() < 0.10) { drops.push(new Drop(Math.random() * (width - 160) + 80, -30, 'CARD')); cardDroppedThisWave = true; }
+        if (waveTimer === 500 && !cardDroppedThisWave && Math.random() < 0.10) { drops.push(new Drop(Math.random() * (width - 160) + 80, -30, 'CARD')); cardDroppedThisWave = true; }
     }
 
     if (waveTimer >= FRAMES_PER_WAVE && !inIntermission) {
         waveTimer = 0; let nextWave = wave + 1;
-        // Boss waves at 3, 6, 9, 10, then secret at 11
         if (nextWave === 3 || nextWave === 6 || nextWave === 9 || nextWave === 10 || nextWave === 11) { 
             startIntermission(true); 
         } else { 
@@ -2086,7 +2480,6 @@ function animate() {
   }
 
   spawnLogic(); updateSupportWaves(); player.update();
-
   bullets.forEach(b => b.update()); enemies.forEach(e => e.update()); allies.forEach(a => a.update()); drops.forEach(d => d.update()); particles.forEach(p => p.update()); wrecks.forEach(w => w.update());
   escortShips.forEach(s => s.update());
   checkCollisions();
