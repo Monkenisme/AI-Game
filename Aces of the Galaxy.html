@@ -2,7 +2,7 @@
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
-<title>ACES: Galaxy Edition - Luftwaffe Update</title>
+<title>ACES of the Galaxy</title>
 <style>
 body { margin: 0; overflow: hidden; background: #020205; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; cursor: none; }
 canvas { display: block; }
@@ -95,6 +95,21 @@ canvas { display: block; }
   </div>
   
   <div id="damage-display"><div id="damage-label">SHIP STATUS</div><canvas id="damageCanvas" width="80" height="100"></canvas></div>
+  
+  <!-- Wingman HUD -->
+  <div id="wingman-hud" style="position:absolute; bottom:180px; left:20px; width:120px; display:none;">
+    <div style="color:#44ff44; font-size:10px; text-transform:uppercase; margin-bottom:4px; text-shadow:0 0 6px #44ff44;">⚡ WINGMEN</div>
+    <div id="wingman-left-bar" style="height:8px; background:#111; border:1px solid #44ff44; border-radius:3px; margin-bottom:4px; overflow:hidden;"><div id="wingman-left-fill" style="height:100%; background:#44ff44; width:100%; transition:width 0.2s;"></div></div>
+    <div id="wingman-right-bar" style="height:8px; background:#111; border:1px solid #44ff44; border-radius:3px; overflow:hidden;"><div id="wingman-right-fill" style="height:100%; background:#44ff44; width:100%; transition:width 0.2s;"></div></div>
+    <div id="wingman-tier-text" style="color:#88ff88; font-size:9px; margin-top:3px; text-align:center;">TIER 0</div>
+  </div>
+
+  <!-- Boss intro overlay -->
+  <div id="boss-intro-overlay" style="position:absolute; top:0; left:0; width:100%; height:100%; display:none; flex-direction:column; align-items:center; justify-content:center; pointer-events:none; z-index:40;">
+    <div id="boss-intro-name" style="color:#ff0000; font-size:52px; font-weight:900; text-shadow:0 0 30px #ff0000, 0 0 60px #ff0000; text-transform:uppercase; letter-spacing:4px; text-align:center;"></div>
+    <div id="boss-intro-sub" style="color:#ffaa00; font-size:22px; font-weight:bold; text-shadow:0 0 15px #ff8800; margin-top:12px; text-align:center;"></div>
+  </div>
+
   <div id="cards-display"><div class="card-slot empty">EMPTY</div><div class="card-slot empty">EMPTY</div><div class="card-slot empty">EMPTY</div></div>
   <div id="notification">SYSTEMS REPAIRED</div>
 </div>
@@ -172,6 +187,8 @@ let globalFormationIdCounter = 0;
 let superPowerMeter = 0;
 let superPowerReady = false;
 let aceSpawnedThisWave = false;
+let wingmen = [];       // persistent wingman array
+let wingmanTier = 0;    // 0-3 upgrade tier
 
 function getSuperPowerNeeded() {
   if (wave <= 3) return 50;
@@ -231,7 +248,25 @@ function initAudio() {
     boss: 'boss music.mp3',
     support: 'Support sound effect.MP3',
     explosion: 'explosion sound.mp3',
-    bossExplosion: 'Explosion Sound Effect.mp3'
+    bossExplosion: 'Explosion Sound Effect.mp3',
+    // Enemy events
+    enemyHit: 'Enemy hit sound effect.mp3',
+    // Wingman events
+    wingmanReady: 'Wingman ready.mp3',
+    wingmanRepaired: 'Wingman repaired.mp3',
+    wingmanUpgraded: 'Wingman upgraded.mp3',
+    // Player events
+    weaponTierIncrease: 'Weapon tier increase.mp3',
+    heal: 'Heal.mp3',
+    // Boss events
+    bossIntro: 'Boss intro.mp3',
+    bossDefeated: 'Boss defeated.mp3',
+    allTurretsGone: 'All turrets gone.mp3',
+    oneTurretGone: 'One turret gone.mp3',
+    enginesAllGone: 'Engines all gone.mp3',
+    oneEngineGone: 'One engine gone.mp3',
+    // Game completion
+    missionAccomplished: 'Mission accomplished.mp3',
   };
 }
 
@@ -345,7 +380,7 @@ class Player {
   constructor() {
     this.x = window.innerWidth / 2; this.y = window.innerHeight - 100; this.size = 65; 
     // Player HP met 50% verhoogd
-    this.parts = { body: { hp: 360, max: 360 }, leftWing: { hp: 240, max: 240 }, rightWing: { hp: 240, max: 240 }, engine: { hp: 300, max: 300 }, gun: { hp: 270, max: 270 } };
+    this.parts = { body: { hp: 400, max: 400 }, leftWing: { hp: 270, max: 270 }, rightWing: { hp: 270, max: 270 }, engine: { hp: 330, max: 330 }, gun: { hp: 300, max: 300 } };
     this.speed = 0.6; this.damage = 15; this.fireRate = 4; this.fireTimer = 0; 
     this.element = 'NONE'; this.weaponType = 'base'; this.shotCount = 1; this.spreadAngle = 0; this.isParallel = false;
     this.effects = {}; this.firstShot = true; this.backupGun = false; this.invincibleTimer = 0;
@@ -385,9 +420,12 @@ class Player {
     else if (this.element === 'EARTH') { this.effects.elementArmor = true; }
     else if (this.element === 'AIR') { baseSpeed *= 1.25; }
 
-    this.speed = (baseSpeed + (this.effects.speed || 0)) * this.speedMultiplier;
+this.speed = (baseSpeed + (this.effects.speed || 0)) * this.speedMultiplier;
     
-    if (this.parts.engine.hp <= 0) { this.speed = 0.16; if (frameCount % 6 === 0) this.parts.body.hp -= 3; }
+    // DE FIX: Maximale cap op speed zodat de muis-berekening nooit over de kop slaat
+    this.speed = Math.min(this.speed, 0.95);
+    
+    if (this.parts.engine.hp <= 0) { this.speed = 0.16; if (frameCount % 6 === 0) this.parts.body.hp -= 3; }    
     if (this.parts.leftWing.hp <= 0 && this.parts.rightWing.hp <= 0) {
         if (!this.isCrashing) { this.isCrashing = true; this.crashTimer = 60; playAudioFile(audioFiles.bossExplosion); }
         return; 
@@ -401,13 +439,13 @@ class Player {
     this.effects.incendiary = false; this.effects.homing = false; this.isParallel = false; this.bulletSpeedMult = 1.0; let isBossHunter = false;
 
     if (this.weaponType === 'sniper') {
-        wDamage = 320; wFireRate = 35; wShotCount = 1; wSpread = 0; 
+        wDamage = 200; wFireRate = 38; wShotCount = 1; wSpread = 0; 
         if(currentWeaponTier >= 1) { this.effects.pierce = true; }
-        if(currentWeaponTier >= 2) { wFireRate = 35; }
+        if(currentWeaponTier >= 2) { wFireRate = 36; }
         if(currentWeaponTier >= 3) { this.effects.plasmaArea = true; }
-        if(currentWeaponTier >= 4) { wFireRate = 25; }
-        if(currentWeaponTier >= 5) { this.bulletSpeedMult = 3.0; }
-        if(currentWeaponTier >= 6) { this.effects.explosive = true; wDamage *= 2.0; } 
+        if(currentWeaponTier >= 4) { wFireRate = 28; }
+        if(currentWeaponTier >= 5) { this.bulletSpeedMult = 2.5; }
+        if(currentWeaponTier >= 6) { this.effects.explosive = true; wDamage *= 1.5; } // was 2.0x, nerfed
     } else if (this.weaponType === 'machinegun') {
         wDamage = 30; wFireRate = 4; wShotCount = 1; wSpread = 0;
         if(currentWeaponTier >= 1) { wShotCount = 2; this.isParallel = true; wDamage = 25; }
@@ -491,7 +529,7 @@ class Player {
   draw() {
     ctx.save(); ctx.translate(this.x, this.y); 
     if (this.rotation) ctx.rotate(this.rotation);
-    ctx.scale(2, 2);
+    ctx.scale(2.6, 2.6);
     if (this.isCrashing) {
         let crashScale = Math.max(0.01, 1 - (60 - this.crashTimer) / 60);
         ctx.scale(crashScale, crashScale);
@@ -499,30 +537,113 @@ class Player {
 
     if (this.effects.invincible) {
         ctx.shadowBlur = 20; ctx.shadowColor = '#00d4ff'; ctx.strokeStyle = '#00d4ff'; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.arc(0, 0, 18 + Math.sin(frameCount * 0.2) * 2, 0, Math.PI*2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(0, 0, 24 + Math.sin(frameCount * 0.2) * 2, 0, Math.PI*2); ctx.stroke();
     }
-    if (this.parts.engine.hp > 0 && !this.isCrashing) {
-        let flameH = 22 + Math.random() * 12; let grad = ctx.createLinearGradient(0, 18, 0, 18 + flameH);
-        grad.addColorStop(0, '#00ffff'); grad.addColorStop(1, 'rgba(0, 255, 255, 0)'); ctx.fillStyle = grad;
-        ctx.beginPath(); ctx.moveTo(-5, 18); ctx.lineTo(0, 18+flameH); ctx.lineTo(5, 18); ctx.fill();
-        ctx.shadowBlur = 18; ctx.shadowColor = '#00d4ff';
+
+    // ── TWIN ENGINE PODS ─────────────────────────────────────────────
+    const engAlive = this.parts.engine.hp > 0 && !this.isCrashing;
+    
+    // Left engine pod
+    ctx.fillStyle = '#0a1a2a';
+    ctx.beginPath(); ctx.moveTo(-16, -8); ctx.lineTo(-14, -8); ctx.lineTo(-14, 20); ctx.lineTo(-16, 20); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#00d4ff'; ctx.lineWidth = 0.5; ctx.stroke();
+    // Left engine exhaust
+    if (engAlive) {
+        let lEH = 10 + Math.random() * 8;
+        let lGrad = ctx.createLinearGradient(-15, 20, -15, 20+lEH);
+        lGrad.addColorStop(0, '#00d4ff'); lGrad.addColorStop(1, 'rgba(0,180,255,0)');
+        ctx.fillStyle = lGrad;
+        ctx.beginPath(); ctx.moveTo(-17, 20); ctx.lineTo(-15, 20+lEH); ctx.lineTo(-13, 20); ctx.fill();
     }
-    const drawVisualPart = (hp, max, points) => {
-        if (hp <= 0) { ctx.fillStyle = '#111'; ctx.strokeStyle = '#333'; } 
-        else {
-            const pct = hp/max; let baseColor = pct > 0.5 ? '#e0e0e0' : (pct > 0.25 ? '#aa7700' : '#880000');
-            let grad = ctx.createLinearGradient(-12, -12, 12, 12); grad.addColorStop(0, '#ffffff'); grad.addColorStop(0.3, baseColor); grad.addColorStop(1, '#444455');
-            ctx.fillStyle = grad; ctx.strokeStyle = '#00d4ff';
-        }
-        ctx.lineWidth = 0.6; ctx.beginPath(); ctx.moveTo(points[0][0], points[0][1]);
-        for(let i=1; i<points.length; i++) ctx.lineTo(points[i][0], points[i][1]); ctx.closePath(); ctx.fill(); ctx.stroke();
-    };
-    drawVisualPart(this.parts.body.hp, this.parts.body.max, [[-8, -22], [8, -22], [12, 14], [-12, 14]]);
-    drawVisualPart(this.parts.leftWing.hp, this.parts.leftWing.max, [[-9, -4], [-26, 12], [-26, 22], [-8, 18]]);
-    drawVisualPart(this.parts.rightWing.hp, this.parts.rightWing.max, [[9, -4], [26, 12], [26, 22], [8, 18]]);
-    if (this.parts.gun.hp > 0) { ctx.fillStyle = '#aaaaaa'; ctx.fillRect(-4, -28, 8, 14); ctx.strokeStyle = '#00d4ff'; ctx.strokeRect(-4, -28, 8, 14); } 
-    else { ctx.fillStyle = '#555555'; ctx.fillRect(-3, -26, 6, 10); }
-    if(this.element !== 'NONE' && this.parts.body.hp > 0 && !this.isCrashing) { ctx.shadowBlur = 12; ctx.shadowColor = ELEMENTS[this.element]; ctx.strokeStyle = ELEMENTS[this.element]; ctx.lineWidth = 2; ctx.stroke(); ctx.shadowBlur = 0; }
+    // Right engine pod
+    ctx.fillStyle = '#0a1a2a';
+    ctx.beginPath(); ctx.moveTo(14, -8); ctx.lineTo(16, -8); ctx.lineTo(16, 20); ctx.lineTo(14, 20); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#00d4ff'; ctx.lineWidth = 0.5; ctx.stroke();
+    if (engAlive) {
+        let rEH = 10 + Math.random() * 8;
+        let rGrad = ctx.createLinearGradient(15, 20, 15, 20+rEH);
+        rGrad.addColorStop(0, '#00d4ff'); rGrad.addColorStop(1, 'rgba(0,180,255,0)');
+        ctx.fillStyle = rGrad;
+        ctx.beginPath(); ctx.moveTo(13, 20); ctx.lineTo(15, 20+rEH); ctx.lineTo(17, 20); ctx.fill();
+    }
+
+    // ── LEFT WING ─────────────────────────────────────────────────────
+    const lwAlive = this.parts.leftWing.hp > 0;
+    const lwPct = lwAlive ? this.parts.leftWing.hp / this.parts.leftWing.max : 0;
+    ctx.fillStyle = lwAlive ? (lwPct > 0.5 ? '#1a3a5a' : '#3a1a1a') : '#111';
+    ctx.beginPath();
+    ctx.moveTo(-8, 0); ctx.lineTo(-28, 16); ctx.lineTo(-26, 22); ctx.lineTo(-14, 16);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = lwAlive ? '#00d4ff' : '#333'; ctx.lineWidth = 0.5; ctx.stroke();
+    if (lwAlive) {
+        ctx.fillStyle = '#00d4ff'; ctx.globalAlpha = 0.3 * lwPct;
+        ctx.beginPath(); ctx.moveTo(-10, 3); ctx.lineTo(-24, 16); ctx.lineTo(-14, 16); ctx.closePath(); ctx.fill();
+        ctx.globalAlpha = 1;
+    }
+
+    // ── RIGHT WING ────────────────────────────────────────────────────
+    const rwAlive = this.parts.rightWing.hp > 0;
+    const rwPct = rwAlive ? this.parts.rightWing.hp / this.parts.rightWing.max : 0;
+    ctx.fillStyle = rwAlive ? (rwPct > 0.5 ? '#1a3a5a' : '#3a1a1a') : '#111';
+    ctx.beginPath();
+    ctx.moveTo(8, 0); ctx.lineTo(28, 16); ctx.lineTo(26, 22); ctx.lineTo(14, 16);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = rwAlive ? '#00d4ff' : '#333'; ctx.lineWidth = 0.5; ctx.stroke();
+    if (rwAlive) {
+        ctx.fillStyle = '#00d4ff'; ctx.globalAlpha = 0.3 * rwPct;
+        ctx.beginPath(); ctx.moveTo(10, 3); ctx.lineTo(24, 16); ctx.lineTo(14, 16); ctx.closePath(); ctx.fill();
+        ctx.globalAlpha = 1;
+    }
+
+    // ── MAIN HULL ──────────────────────────────────────────────────────
+    const bodyAlive = this.parts.body.hp > 0;
+    const bodyPct = bodyAlive ? this.parts.body.hp / this.parts.body.max : 0;
+    ctx.shadowBlur = bodyAlive ? 15 : 0; ctx.shadowColor = '#00d4ff';
+    ctx.fillStyle = bodyAlive ? (bodyPct > 0.5 ? '#1a3060' : (bodyPct > 0.25 ? '#402010' : '#500010')) : '#111';
+    ctx.beginPath();
+    ctx.moveTo(0, -26);  // nose tip
+    ctx.lineTo(8, -12);
+    ctx.lineTo(8, -2);
+    ctx.lineTo(12, 2);
+    ctx.lineTo(12, 14);
+    ctx.lineTo(-12, 14);
+    ctx.lineTo(-12, 2);
+    ctx.lineTo(-8, -2);
+    ctx.lineTo(-8, -12);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = bodyAlive ? '#00d4ff' : '#333'; ctx.lineWidth = 0.6; ctx.stroke();
+
+    // ── GUN / MUZZLE POINTS ────────────────────────────────────────────
+    if (this.parts.gun.hp > 0) {
+        ctx.shadowBlur = 8; ctx.shadowColor = '#00ffcc';
+        // Left muzzle
+        ctx.fillStyle = '#aaccff';
+        ctx.fillRect(-14, -18, 3, 10);
+        // Right muzzle
+        ctx.fillRect(11, -18, 3, 10);
+        // Center nose cannon tip
+        ctx.fillStyle = '#00ffcc';
+        ctx.fillRect(-1, -30, 2, 8);
+    } else {
+        ctx.fillStyle = '#333'; ctx.fillRect(-6, -26, 5, 8); ctx.fillRect(1, -26, 5, 8);
+    }
+
+    // ── COCKPIT ────────────────────────────────────────────────────────
+    if (bodyAlive) {
+        ctx.fillStyle = '#0088ff'; ctx.shadowBlur = 6; ctx.shadowColor = '#0088ff';
+        ctx.beginPath(); ctx.ellipse(0, -8, 5, 8, 0, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#88ccff';
+        ctx.beginPath(); ctx.ellipse(-1, -10, 2, 4, 0, 0, Math.PI*2); ctx.fill();
+    }
+
+    // ── ELEMENT GLOW ───────────────────────────────────────────────────
+    if (this.element !== 'NONE' && bodyAlive && !this.isCrashing) {
+        ctx.shadowBlur = 12; ctx.shadowColor = ELEMENTS[this.element]; 
+        ctx.strokeStyle = ELEMENTS[this.element]; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(0,-26); ctx.lineTo(8,-12); ctx.lineTo(12,2); ctx.lineTo(12,14); 
+        ctx.lineTo(-12,14); ctx.lineTo(-12,2); ctx.lineTo(-8,-12); ctx.closePath(); ctx.stroke();
+        ctx.shadowBlur = 0;
+    }
     ctx.restore();
   }
 }
@@ -573,8 +694,8 @@ class Enemy {
     this.returning = false;
     this.returnTargetX = null;
     
-    let baseHp = (40 + (this.type * 10)) * 2; 
-    this.hp = baseHp * Math.pow(1.10, waveDiff - 1); 
+    let baseHp = (35 + (this.type * 9)) * 2; 
+    this.hp = baseHp * Math.pow(1.08, waveDiff - 1); 
     this.maxHp = this.hp; 
     this.size = 55;
     this.vx = 0; 
@@ -587,7 +708,7 @@ class Enemy {
       this.subType = 'bomber';
       this.x = Math.random() * (width - 150) + 75;
       this.y = -150;
-      this.hp = 2400 * Math.pow(1.10, waveDiff - 1); 
+      this.hp = 2000 * Math.pow(1.08, waveDiff - 1); 
       this.maxHp = this.hp;
       this.size = 85;
       this.speed = 1.0 * Math.pow(1.02, waveDiff - 1);
@@ -597,28 +718,40 @@ class Enemy {
     } else if (formationType === 'ace_pilot') {
       this.behavior = 'ace_pilot';
       this.subType = 'ace';
-      this.x = Math.random() > 0.5 ? -100 : width + 100;
-      this.y = Math.random() * 200;
-      this.hp = 600 * Math.pow(1.10, waveDiff - 1);
+      this.dir = Math.random() > 0.5 ? 1 : -1; // 1=left→right, -1=right→left
+      this.x = this.dir === 1 ? -140 : width + 140;
+      this.y = 80 + Math.random() * (height * 0.38);
+      this.baseY = this.y;
+      this.hp = 900 * Math.pow(1.10, waveDiff - 1);
       this.maxHp = this.hp;
-      this.speed = 6.0;
-      this.damage = 10;
-      this.fireInterval = 15;
+      this.size = 60;
+      this.speed = 22; // fast fly-by
+      this.damage = 18;
+      this.fireInterval = 1; // not used via timer
+      this.flyPhase = 'active';
+      this.waitTimer = 0;
+      this.shot25 = false;
+      this.shot75 = false;
     } else if (formationType === 'boss_missile') {
       this.behavior = 'boss_missile';
       this.subType = 'boss_missile';
       this.x = startX; this.y = startY;
       this.hp = 120; // Player can shoot it down relatively easily
       this.maxHp = 120;
-      this.speed = 2.5;
-      this.damage = 150; // Heavy damage to player
-      this.size = 20;
+      this.speed = 4;
+      this.damage = 300; // Heavy damage to player
+      this.size = 50;
       this.fireInterval = 9999;
     } else if (formationType === 'fighter-wing') {
       this.behavior = 'fighter-wing';
       this.x = startX; this.y = startY;
-      this.speed = 7.2 * Math.pow(1.02, waveDiff - 1); // 2x speed
       this.fireInterval = 60;
+    } else if (this.formationType === 'side-sweep') {
+      this.behavior = 'side-sweep';
+      this.x = startX; this.y = startY;
+      this.startY = startY;
+      this.fireInterval = 55;
+      this.sideSweepPhase = 0;
     } else if (this.formationType === 'diagonal-kette') {
       this.behavior = 'diagonal-kette';
       this.x = startX; this.y = startY - 50;
@@ -643,8 +776,8 @@ class Enemy {
       this.fireInterval = 100;
     }
 
-    if(this.formationType !== 'bomber' && this.formationType !== 'ace_pilot' && this.formationType !== 'boss_missile' && this.formationType !== 'fighter-wing') {
-       this.speed = 3.6 * Math.pow(1.02, waveDiff - 1); 
+    if(this.formationType !== 'bomber' && this.formationType !== 'ace_pilot' && this.formationType !== 'boss_missile') {
+       this.speed = 5.5; // uniform speed for all normal enemies regardless of formation
        this.damage = Math.min(50, 20 * Math.pow(1.08, waveDiff - 1));
     }
     this.fireTimer = Math.random() * this.fireInterval;
@@ -694,41 +827,129 @@ class Enemy {
     } else {
         if (this.behavior === 'bomber') {
            this.y += this.speed * speedMult;
+           this.rotation = Math.PI / 2; // Always face downward
            if (this.y > height + 100) { this.returning = true; }
         } else if (this.behavior === 'ace_pilot') {
-           this.rotation = Math.atan2(player.y - this.y, player.x - this.x);
-           this.x += Math.cos(this.rotation) * this.speed * speedMult;
-           this.y += Math.sin(this.rotation) * this.speed * speedMult;
-           if (this.y > height + 150 || this.y < -150 || this.x > width + 150 || this.x < -150) { this.returning = true; }
+           if (this.flyPhase === 'waiting') {
+               this.waitTimer++;
+               if (this.waitTimer >= 300) { // 5 seconds
+                   this.waitTimer = 0;
+                   this.flyPhase = 'active';
+                   this.dir *= -1; // Re-enter from opposite side
+                   this.x = this.dir === 1 ? -140 : width + 140;
+                   this.y = 80 + Math.random() * (height * 0.38);
+                   this.baseY = this.y;
+                   this.shot25 = false;
+                   this.shot75 = false;
+               }
+           } else {
+               // Smooth fly-by with gentle arc
+               this.x += this.dir * this.speed * speedMult;
+               this.y = this.baseY + Math.sin(frameCount * 0.025 + this.xOffset) * 55;
+               // rotation for drawing (facing direction of travel)
+               let dy = Math.cos(frameCount * 0.025 + this.xOffset) * 55 * 0.025;
+               this.rotation = Math.atan2(dy, this.dir * this.speed);
+               
+               // Fire triple burst at 25% and 75% screen traversal
+               let pct = this.dir === 1 ? this.x / width : (width - this.x) / width;
+               if (!this.shot25 && pct > 0.25) { this.shot25 = true; this.shootAceTriple(); }
+               if (!this.shot75 && pct > 0.75) { this.shot75 = true; this.shootAceTriple(); }
+               
+               // Off-screen → waiting phase
+               if ((this.dir === 1 && this.x > width + 140) || (this.dir === -1 && this.x < -140)) {
+                   this.flyPhase = 'waiting';
+                   this.waitTimer = 0;
+               }
+           }
         } else if (this.behavior === 'boss_missile') {
            this.rotation = Math.atan2(player.y - this.y, player.x - this.x);
            this.x += Math.cos(this.rotation) * this.speed * speedMult;
            this.y += Math.sin(this.rotation) * this.speed * speedMult;
            if (frameCount % 3 === 0) spawnParticles(this.x, this.y, '#888888', 2);
         } else if (this.behavior === 'fighter-wing') {
+           // Aces of the Luftwaffe stijl: Vloeiende S-bocht (Figure-8 achtig)
            this.x += this.side * this.speed * speedMult;
-           this.y += Math.sin(frameCount * 0.05 + this.xOffset) * 4.0 + 1.5;
-           this.rotation = Math.atan2(Math.sin(frameCount * 0.05 + this.xOffset) * 4.0 + 1.5, this.side * this.speed * speedMult);
+           let sineOff = Math.sin(frameCount * 0.03 + this.xOffset) * 120; // Veel diepere S-curve
+           let prevSine = Math.sin((frameCount - 1) * 0.03 + this.xOffset) * 120;
+           this.y += (sineOff - prevSine) * speedMult;
+           
+           let yVel = (sineOff - prevSine);
+           // Neus draait dynamischer mee in de S-bocht
+           this.rotation = Math.PI + Math.atan2(yVel, this.side * this.speed) * 0.8;
            if (this.x > width + 150 || this.x < -150 || this.y > height + 100) this.returning = true;
+           
+        } else if (this.behavior === 'side-sweep') {
+           // Graceful U-Turn: Duikt diep het scherm in en veert weer omhoog
+           let prevX = this.x;
+           let prevY = this.y;
+           this.x += this.side * this.speed * speedMult;
+           let travelWidth = width + 300;
+           let entryX = this.side === 1 ? -150 : width + 150;
+           let progress = (this.x - entryX) / (this.side === 1 ? travelWidth : -travelWidth);
+           progress = Math.max(0, Math.min(1, progress));
+           
+           let arcY = this.startY + Math.sin(progress * Math.PI) * 450; // Duikt 450px diep in!
+           this.y = arcY;
+           
+           // Calculate velocity-based rotation from actual movement
+           let velX = this.x - prevX;
+           let velY = this.y - prevY;
+           this.rotation = Math.atan2(velY, velX);
+           
+           if ((this.side === 1 && this.x > width + 150) || (this.side === -1 && this.x < -150)) { this.returning = true; }
+           
         } else if (this.behavior === 'diagonal-kette' || this.behavior === 'box') {
+           // Naar voren (hard!), maar met een dreigende flauwe bocht er in
            this.y += this.speed * speedMult; 
+           let curveSpeed = this.behavior === 'box' ? 0.04 : 0.02;
+           let curveWidth = this.behavior === 'box' ? 3 : 1.5;
+           
+           // Schuift zachtjes van links naar rechts
+           let prevX = this.x;
+           this.x += Math.sin(frameCount * curveSpeed + this.xOffset) * curveWidth * speedMult;
+           let prevY = this.y - this.speed * speedMult; // Previous Y before movement
+           
+           // Calculate rotation based on actual velocity
+           let velX = this.x - prevX;
+           let velY = this.speed * speedMult;
+           this.rotation = Math.atan2(velY, velX);
+           
            if (this.y > height + 80) { this.returning = true; }
+           
         } else if (this.behavior === 'column-sweep') {
+          // Lijn vliegend: Nu ook met een flauwe slinger in de lucht
           const dir = this.vy === -1 ? -1 : 1;
           this.y += this.speed * speedMult * dir;
+          
+          // Slingerend vliegen in plaats van rigide rechtdoor
+          let prevX = this.x;
+          this.x += Math.sin(frameCount * 0.025 + this.xOffset) * 1.5 * speedMult;
+          
+          // Calculate velocity-based rotation
+          let velX = this.x - prevX;
+          let velY = this.speed * speedMult * dir;
+          this.rotation = Math.atan2(velY, velX);
+
           if (dir === 1 && this.y > height + 80) { this.vy = -1; } 
           else if (dir === -1 && this.y < -80) { this.returning = true; }
         } else {
-          if (this.y < this.targetY) this.y += this.speed * speedMult * 0.9;
-          else { 
+          if (this.y < this.targetY) {
+            this.y += this.speed * speedMult * 0.9;
+            this.rotation = Math.PI / 2; // Face downward while ascending
+          } else { 
             if (this.subType === 'tank') {
                this.x += (player.x - this.x) * 0.02 * speedMult;
                this.y += (player.y - this.y - 300) * 0.01 * speedMult; 
                this.rotation = Math.atan2(player.y - this.y, player.x - this.x) - Math.PI/2;
             } else {
+               let prevX = this.x;
+               let prevY = this.y;
                this.x += (player.x - this.x) * 0.008 * speedMult; 
-               this.x += Math.cos(frameCount * 0.022 + this.xOffset) * 2.0; 
-               this.rotation = Math.PI + Math.sin(frameCount * 0.08) * 0.2;
+               this.x += Math.cos(frameCount * 0.022 + this.xOffset) * 2.0;
+               // Calculate velocity-based rotation
+               let velX = this.x - prevX;
+               let velY = (player.y - prevY) * 0.008 * speedMult;
+               this.rotation = Math.atan2(velY, velX);
             }
           }
         }
@@ -748,7 +969,7 @@ class Enemy {
         });
     }
     
-    if (!inIntermission && this.subType !== 'boss_missile') {
+    if (!inIntermission && this.subType !== 'boss_missile' && this.subType !== 'ace') {
         let distToPlayer = Math.hypot(this.x - player.x, this.y - player.y);
         let shootRange = height * 0.75;
         this.fireTimer--;
@@ -757,6 +978,17 @@ class Enemy {
             if (this.subType === 'bomber' || this.subType === 'ace' || Math.random() < 0.6) this.shoot();
         }
     }
+  }
+
+  shootAceTriple() {
+    // Triple shot aimed downward into the screen
+    let downAngle = Math.PI / 2 + (Math.random() - 0.5) * 0.3; // mostly down
+    for (let i = -1; i <= 1; i++) {
+      let a = downAngle + i * 0.22;
+      let b = new Bullet(this.x, this.y, Math.cos(a) * 11, Math.sin(a) * 11, '#00ffdd', true, 'NONE', false, this.damage);
+      b.size = 7; bullets.push(b);
+    }
+    playRealisticGun('support');
   }
 
   shoot() {
@@ -787,13 +1019,23 @@ class Enemy {
   draw() {
     ctx.save(); ctx.translate(this.x, this.y); 
     
-    if (this.subType === 'ace' || this.subType === 'boss_missile' || this.behavior === 'fighter-wing' || this.returning) {
+    if (this.subType === 'ace') {
+        // Ace pilot uses its own internal rotation+flip, skip generic rotation
+        let renderScale = 2.5;
+        if (this.isCrashing) {
+            let crashScale = Math.max(0.01, 1 - (22 - this.crashTimer)/22);
+            ctx.scale(renderScale * crashScale, renderScale * crashScale);
+        } else {
+            ctx.scale(renderScale, renderScale);
+        }
+    } else if (this.subType === 'boss_missile') {
          ctx.rotate(this.rotation + Math.PI/2);
     } else {
          ctx.rotate(this.rotation);
     }
     
     let renderScale = this.subType === 'bomber' ? 3.0 : 2.0;
+    if (this.subType === 'ace') { /* already handled above */ } else
     if (this.isCrashing) {
         let crashScale = Math.max(0.01, 1 - (22 - this.crashTimer)/22);
         ctx.scale(renderScale * crashScale, renderScale * crashScale);
@@ -807,10 +1049,77 @@ class Enemy {
         ctx.beginPath(); ctx.moveTo(-20, 10); ctx.lineTo(20, 10); ctx.lineTo(30, -10); ctx.lineTo(0, -30); ctx.lineTo(-30, -10); ctx.closePath(); ctx.fill();
         ctx.fillStyle = '#ffaa00'; ctx.beginPath(); ctx.arc(0, -10, 8, 0, Math.PI*2); ctx.fill();
     } else if (this.subType === 'ace') {
-        ctx.shadowBlur = 20; ctx.shadowColor = '#ffffff';
-        ctx.fillStyle = '#ffffff';
-        ctx.beginPath(); ctx.moveTo(0, -20); ctx.lineTo(-10, 10); ctx.lineTo(10, 10); ctx.closePath(); ctx.fill();
-        ctx.fillStyle = '#ff0000'; ctx.beginPath(); ctx.arc(0, 0, 4, 0, Math.PI*2); ctx.fill();
+        // Don't draw when waiting off-screen
+        if (this.flyPhase === 'waiting') { ctx.restore(); return; }
+        // ACE PILOT: sleek fighter, player-sized, cyan/gold colors
+        ctx.save();
+        // Tilt based on vertical component of motion for banking effect
+        let tilt = this.rotation * (this.dir === 1 ? 1 : -1) * 0.5;
+        ctx.rotate(tilt);
+        // flip horizontally based on flight direction
+        ctx.scale(this.dir, 1);
+        ctx.shadowBlur = 25; ctx.shadowColor = '#00ffcc';
+        
+        // Engine exhaust glow
+        let flameH = 12 + Math.random() * 8;
+        let grad = ctx.createLinearGradient(0, 14, 0, 14 + flameH);
+        grad.addColorStop(0, '#00ffcc'); grad.addColorStop(1, 'rgba(0,255,180,0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath(); ctx.moveTo(-4, 14); ctx.lineTo(0, 14 + flameH); ctx.lineTo(4, 14); ctx.fill();
+
+        // Main fuselage
+        ctx.fillStyle = '#0d2244';
+        ctx.beginPath();
+        ctx.moveTo(0, -24);    // nose
+        ctx.lineTo(6, -10);
+        ctx.lineTo(8, 12);
+        ctx.lineTo(-8, 12);
+        ctx.lineTo(-6, -10);
+        ctx.closePath(); ctx.fill();
+        
+        // Gold cockpit stripe
+        ctx.fillStyle = '#ffd700';
+        ctx.beginPath(); ctx.ellipse(0, -10, 5, 9, 0, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#001122';
+        ctx.beginPath(); ctx.ellipse(0, -10, 3.5, 7, 0, 0, Math.PI*2); ctx.fill();
+        
+        // Left swept wing
+        ctx.fillStyle = '#1a3a6a';
+        ctx.beginPath();
+        ctx.moveTo(-6, 2);
+        ctx.lineTo(-26, 14);
+        ctx.lineTo(-26, 20);
+        ctx.lineTo(-8, 14);
+        ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = '#00ffcc'; ctx.lineWidth = 0.8; ctx.stroke();
+        
+        // Right swept wing
+        ctx.beginPath();
+        ctx.moveTo(6, 2);
+        ctx.lineTo(26, 14);
+        ctx.lineTo(26, 20);
+        ctx.lineTo(8, 14);
+        ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = '#00ffcc'; ctx.lineWidth = 0.8; ctx.stroke();
+        
+        // Tail fins
+        ctx.fillStyle = '#0d2244';
+        ctx.beginPath();
+        ctx.moveTo(-4, 10); ctx.lineTo(-14, 18); ctx.lineTo(-8, 18); ctx.closePath(); ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(4, 10); ctx.lineTo(14, 18); ctx.lineTo(8, 18); ctx.closePath(); ctx.fill();
+        
+        // Fuselage gold trim
+        ctx.strokeStyle = '#ffd700'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(-6, -10); ctx.lineTo(-8, 12); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(6, -10); ctx.lineTo(8, 12); ctx.stroke();
+        
+        // Gun barrels
+        ctx.fillStyle = '#aaaaaa';
+        ctx.fillRect(-12, -5, 4, 12);
+        ctx.fillRect(8, -5, 4, 12);
+        
+        ctx.restore();
     } else if (this.subType === 'boss_missile') {
         ctx.shadowBlur = 15; ctx.shadowColor = '#ff2200';
         ctx.fillStyle = '#aa0000';
@@ -820,20 +1129,103 @@ class Enemy {
         ctx.fillStyle = '#ffeedd';
         ctx.beginPath(); ctx.moveTo(-5, 10); ctx.lineTo(0, 10 + flameH); ctx.lineTo(5, 10); ctx.fill();
     } else {
-        ctx.shadowBlur = 48; ctx.shadowColor = this.type === 6 ? '#ff0055' : (this.type < 3 ? '#ff3333' : '#aa00ff');
-        let flameH = 18 + Math.random() * 8; 
-        let grad = ctx.createLinearGradient(0, 18, 0, 18 + flameH);
-        grad.addColorStop(0, '#ff4400'); grad.addColorStop(1, 'rgba(255, 68, 0, 0)'); 
-        ctx.fillStyle = grad;
-        ctx.beginPath(); ctx.moveTo(-4, 18); ctx.lineTo(0, 18+flameH); ctx.lineTo(4, 18); ctx.fill();
-        
-        ctx.fillStyle = this.slowed ? '#0077ff' : (this.type === 6 ? '#880022' : (this.type < 3 ? '#660000' : '#440066'));
-        ctx.beginPath(); ctx.moveTo(-14, 12); ctx.lineTo(14, 12); ctx.lineTo(22, -8); ctx.lineTo(0, -26); ctx.lineTo(-22, -8); ctx.closePath(); ctx.fill();
-        
-        ctx.fillStyle = this.type < 3 ? '#ff4444' : '#aa44ff'; 
-        ctx.beginPath(); ctx.arc(0, -8, 5, 0, Math.PI*2); ctx.fill();
-        
-        ctx.fillStyle = '#ffdd88'; ctx.fillRect(-2, -30, 4, 12);
+        // SPACE SHOOTER ENEMY DESIGNS
+        const isTank = this.subType === 'tank';
+        if (isTank) {
+            // BOMBER SPACESHIP: large, imposing, dangerous
+            ctx.shadowBlur = 40; ctx.shadowColor = '#ff2200';
+            
+            // Main fuselage body - large oval shape
+            ctx.fillStyle = '#330000';
+            ctx.beginPath();
+            ctx.moveTo(0, -32);     // nose cone
+            ctx.bezierCurveTo(18, -24, 28, -8, 28, 8);
+            ctx.bezierCurveTo(28, 20, 18, 28, 0, 32);
+            ctx.bezierCurveTo(-18, 28, -28, 20, -28, 8);
+            ctx.bezierCurveTo(-28, -8, -18, -24, 0, -32);
+            ctx.closePath(); ctx.fill();
+            ctx.strokeStyle = '#ff4400'; ctx.lineWidth = 1.2; ctx.stroke();
+            
+            // Nose armor plating
+            ctx.fillStyle = '#550000';
+            ctx.beginPath(); ctx.moveTo(-8, -28); ctx.lineTo(0, -36); ctx.lineTo(8, -28); ctx.closePath(); ctx.fill();
+            
+            // Wings (bomb racks)
+            ctx.fillStyle = '#220000';
+            // Left wing
+            ctx.beginPath(); ctx.moveTo(-20, -4); ctx.lineTo(-42, 0); ctx.lineTo(-42, 8); ctx.lineTo(-20, 4); ctx.closePath(); ctx.fill();
+            ctx.strokeStyle = '#ff6600'; ctx.lineWidth = 0.8; ctx.stroke();
+            // Right wing
+            ctx.beginPath(); ctx.moveTo(20, -4); ctx.lineTo(42, 0); ctx.lineTo(42, 8); ctx.lineTo(20, 4); ctx.closePath(); ctx.fill();
+            ctx.stroke();
+            
+            // Bomb/missile pods on wings
+            ctx.fillStyle = '#444';
+            ctx.fillRect(-40, -3, 8, 6);
+            ctx.fillRect(32, -3, 8, 6);
+            
+            // Engine exhausts
+            let eGrad = ctx.createLinearGradient(0, 28, 0, 45);
+            eGrad.addColorStop(0, '#ff6600'); eGrad.addColorStop(0.5, '#ff4400'); eGrad.addColorStop(1, 'rgba(255,50,0,0)');
+            ctx.fillStyle = eGrad;
+            ctx.beginPath(); ctx.moveTo(-10, 28); ctx.lineTo(-12, 45); ctx.lineTo(-8, 28); ctx.fill();
+            ctx.beginPath(); ctx.moveTo(10, 28); ctx.lineTo(12, 45); ctx.lineTo(8, 28); ctx.fill();
+            
+            // Cockpit window
+            ctx.fillStyle = '#111';
+            ctx.beginPath(); ctx.ellipse(0, -12, 6, 4, 0, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#00ff44';
+            ctx.beginPath(); ctx.ellipse(0, -12, 3, 2, 0, 0, Math.PI*2); ctx.fill();
+            
+            // Hull vents/details
+            ctx.strokeStyle = '#ff3300'; ctx.lineWidth = 0.5;
+            for (let i = -2; i <= 2; i++) {
+              if (i === 0) continue;
+              ctx.beginPath(); ctx.moveTo(i*9, -8); ctx.lineTo(i*9, 12); ctx.stroke();
+            }
+        } else {
+            // INTERCEPTOR: sleek, fast, aggressive
+            const colors = [
+              ['#440000','#ff4444','#ff3300'], // red
+              ['#003311','#44ff88','#00ff44'], // green  
+              ['#220044','#aa44ff','#8800ff'], // purple
+            ];
+            let ci = Math.min(2, Math.floor(this.type / 2));
+            let [hull, glow, accent] = colors[ci];
+            ctx.shadowBlur = 25; ctx.shadowColor = glow;
+            // Engine exhaust
+            let eH = 16 + Math.random() * 8;
+            let eGrad = ctx.createLinearGradient(0, 14, 0, 14 + eH);
+            eGrad.addColorStop(0, glow); eGrad.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = eGrad;
+            ctx.beginPath(); ctx.moveTo(-5, 14); ctx.lineTo(0, 14+eH); ctx.lineTo(5, 14); ctx.fill();
+            // Hull - sleek fighter shape
+            ctx.fillStyle = this.slowed ? '#0044aa' : hull;
+            ctx.beginPath();
+            ctx.moveTo(0, -26);  // nose tip
+            ctx.lineTo(7, -12);
+            ctx.lineTo(8, 14);
+            ctx.lineTo(-8, 14);
+            ctx.lineTo(-7, -12);
+            ctx.closePath(); ctx.fill();
+            ctx.strokeStyle = glow; ctx.lineWidth = 0.7; ctx.stroke();
+            // Swept wings
+            ctx.fillStyle = hull;
+            ctx.beginPath(); ctx.moveTo(-7, -4); ctx.lineTo(-26, 10); ctx.lineTo(-22, 16); ctx.lineTo(-8, 10); ctx.closePath(); ctx.fill();
+            ctx.strokeStyle = glow; ctx.lineWidth = 0.5; ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(7, -4); ctx.lineTo(26, 10); ctx.lineTo(22, 16); ctx.lineTo(8, 10); ctx.closePath(); ctx.fill();
+            ctx.stroke();
+            // Cockpit
+            ctx.fillStyle = accent;
+            ctx.beginPath(); ctx.ellipse(0, -8, 4, 7, 0, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath(); ctx.ellipse(-1, -10, 1.5, 2.5, 0, 0, Math.PI*2); ctx.fill();
+            // Nose gun barrel (clearly visible muzzle)
+            ctx.fillStyle = '#cccccc';
+            ctx.fillRect(-2, -30, 4, 8);
+            ctx.fillStyle = accent;
+            ctx.fillRect(-1, -32, 2, 4); // muzzle flash point
+        }
     }
     ctx.restore();
   }
@@ -842,7 +1234,7 @@ class Enemy {
 class Boss {
   constructor(waveNum) {
     this.waveNum = waveNum; this.isBoss = true;
-    let opMult = 1 + (currentWeaponTier * 0.2);
+    let opMult = 1 + (currentWeaponTier * 0.25); // was 0.2, slightly more HP per tier
     this.currentPhase = 0; 
     this.parts = [];
     let totalBossHp = 0;
@@ -850,33 +1242,42 @@ class Boss {
     
     if (waveNum === 3) {
       this.name = "IRON HAWK FORTRESS";
-      this.parts.push({id:'eng_l', relX:-110, relY:60, hp:2200*opMult, maxHp:2200*opMult, radius:30, color:'#00ff66', isDead:false, phase:0, label:'ENGINE'});
-      this.parts.push({id:'eng_r', relX:110, relY:60, hp:2200*opMult, maxHp:2200*opMult, radius:30, color:'#00ff66', isDead:false, phase:0, label:'ENGINE'});
-      this.parts.push({id:'gun_l', relX:-70, relY:-65, hp:2000*opMult, maxHp:2000*opMult, radius:22, color:'#ff8800', isDead:false, phase:1, label:'GUN'});
-      this.parts.push({id:'gun_r', relX:70, relY:-65, hp:2000*opMult, maxHp:2000*opMult, radius:22, color:'#ff8800', isDead:false, phase:1, label:'GUN'});
-      this.parts.push({id:'hull', relX:0, relY:0, hp:3000*opMult, maxHp:3000*opMult, radius:55, color:'#ff2200', isDead:false, phase:2, label:'HULL'});
+      // Phase 0: Twin rear engine nacelles (visible at bottom of fuselage)
+      this.parts.push({id:'eng_l', relX:-36, relY:80, hp:2200*opMult, maxHp:2200*opMult, radius:22, color:'#44ff44', isDead:false, phase:0, label:'ENGINE'});
+      this.parts.push({id:'eng_r', relX:36, relY:80, hp:2200*opMult, maxHp:2200*opMult, radius:22, color:'#44ff44', isDead:false, phase:0, label:'ENGINE'});
+      // Phase 1: Wing-tip gun pods
+      this.parts.push({id:'gun_l', relX:-200, relY:65, hp:2000*opMult, maxHp:2000*opMult, radius:22, color:'#ff8800', isDead:false, phase:1, label:'GUN'});
+      this.parts.push({id:'gun_r', relX:200, relY:65, hp:2000*opMult, maxHp:2000*opMult, radius:22, color:'#ff8800', isDead:false, phase:1, label:'GUN'});
+      // Phase 2: Cockpit/hull
+      this.parts.push({id:'hull', relX:0, relY:-40, hp:1000*opMult, maxHp:1000*opMult, radius:28, color:'#ff2200', isDead:false, phase:2, label:'HULL'});
       totalBossHp = 11400 * opMult;
     } else if (waveNum === 6) {
       this.name = "STEEL CARRIER FORTRESS";
-      this.parts.push({id:'eng_fl', relX:-130, relY:80, hp:2800*opMult, maxHp:2800*opMult, radius:28, color:'#00ff66', isDead:false, phase:0, label:'ENGINE'});
-      this.parts.push({id:'eng_fr', relX:130, relY:80, hp:2800*opMult, maxHp:2800*opMult, radius:28, color:'#00ff66', isDead:false, phase:0, label:'ENGINE'});
-      this.parts.push({id:'eng_rl', relX:-50, relY:90, hp:2800*opMult, maxHp:2800*opMult, radius:24, color:'#00ff66', isDead:false, phase:0, label:'ENGINE'});
-      this.parts.push({id:'eng_rr', relX:50, relY:90, hp:2800*opMult, maxHp:2800*opMult, radius:24, color:'#00ff66', isDead:false, phase:0, label:'ENGINE'});
-      this.parts.push({id:'bat_l', relX:-120, relY:-20, hp:3500*opMult, maxHp:3500*opMult, radius:26, color:'#ff8800', isDead:false, phase:1, label:'BATTERY'});
-      this.parts.push({id:'bat_c', relX:0, relY:-80, hp:3500*opMult, maxHp:3500*opMult, radius:26, color:'#ff8800', isDead:false, phase:1, label:'BATTERY'});
-      this.parts.push({id:'bat_r', relX:120, relY:-20, hp:3500*opMult, maxHp:3500*opMult, radius:26, color:'#ff8800', isDead:false, phase:1, label:'BATTERY'});
-      this.parts.push({id:'hull', relX:0, relY:10, hp:5000*opMult, maxHp:5000*opMult, radius:65, color:'#ff2200', isDead:false, phase:2, label:'HULL'});
+      // Phase 0: Engines — sponsons on the sides
+      this.parts.push({id:'eng_fl', relX:-250, relY:20, hp:2800*opMult, maxHp:2800*opMult, radius:24, color:'#44aaff', isDead:false, phase:0, label:'ENGINE'});
+      this.parts.push({id:'eng_fr', relX:250, relY:20, hp:2800*opMult, maxHp:2800*opMult, radius:24, color:'#44aaff', isDead:false, phase:0, label:'ENGINE'});
+      this.parts.push({id:'eng_rl', relX:-150, relY:60, hp:2800*opMult, maxHp:2800*opMult, radius:20, color:'#44aaff', isDead:false, phase:0, label:'ENGINE'});
+      this.parts.push({id:'eng_rr', relX:150, relY:60, hp:2800*opMult, maxHp:2800*opMult, radius:20, color:'#44aaff', isDead:false, phase:0, label:'ENGINE'});
+      // Phase 1: Battery turrets on deck
+      this.parts.push({id:'bat_l', relX:-160, relY:-20, hp:3500*opMult, maxHp:3500*opMult, radius:26, color:'#ff8800', isDead:false, phase:1, label:'BATTERY'});
+      this.parts.push({id:'bat_c', relX:0, relY:-100, hp:3500*opMult, maxHp:3500*opMult, radius:26, color:'#ff8800', isDead:false, phase:1, label:'BATTERY'});
+      this.parts.push({id:'bat_r', relX:160, relY:-20, hp:3500*opMult, maxHp:3500*opMult, radius:26, color:'#ff8800', isDead:false, phase:1, label:'BATTERY'});
+      // Phase 2: Bridge
+      this.parts.push({id:'hull', relX:0, relY:-100, hp:1667*opMult, maxHp:1667*opMult, radius:38, color:'#ff2200', isDead:false, phase:2, label:'HULL'});
       totalBossHp = 25600 * opMult;
     } else if (waveNum === 9) {
       this.name = "DOOM ZEPPELIN";
-      this.parts.push({id:'prop_l', relX:-120, relY:50, hp:4000*opMult, maxHp:4000*opMult, radius:32, color:'#00ff66', isDead:false, phase:0, label:'PROPELLER'});
-      this.parts.push({id:'prop_c', relX:0, relY:80, hp:4000*opMult, maxHp:4000*opMult, radius:32, color:'#00ff66', isDead:false, phase:0, label:'PROPELLER'});
-      this.parts.push({id:'prop_r', relX:120, relY:50, hp:4000*opMult, maxHp:4000*opMult, radius:32, color:'#00ff66', isDead:false, phase:0, label:'PROPELLER'});
-      this.parts.push({id:'tur_ll', relX:-140, relY:-30, hp:3500*opMult, maxHp:3500*opMult, radius:24, color:'#ff8800', isDead:false, phase:1, label:'TURRET'});
-      this.parts.push({id:'tur_l', relX:-60, relY:-60, hp:3500*opMult, maxHp:3500*opMult, radius:24, color:'#ff8800', isDead:false, phase:1, label:'TURRET'});
-      this.parts.push({id:'tur_r', relX:60, relY:-60, hp:3500*opMult, maxHp:3500*opMult, radius:24, color:'#ff8800', isDead:false, phase:1, label:'TURRET'});
-      this.parts.push({id:'tur_rr', relX:140, relY:-30, hp:3500*opMult, maxHp:3500*opMult, radius:24, color:'#ff8800', isDead:false, phase:1, label:'TURRET'});
-      this.parts.push({id:'hull', relX:0, relY:-20, hp:6000*opMult, maxHp:6000*opMult, radius:70, color:'#ff2200', isDead:false, phase:2, label:'GONDOLA'});
+      // Phase 0: Engine nacelles under gondola
+      this.parts.push({id:'nac_l', relX:-105, relY:100, hp:4000*opMult, maxHp:4000*opMult, radius:22, color:'#ff6600', isDead:false, phase:0, label:'PROPELLER'});
+      this.parts.push({id:'nac_c', relX:0, relY:120, hp:4000*opMult, maxHp:4000*opMult, radius:22, color:'#ff6600', isDead:false, phase:0, label:'PROPELLER'});
+      this.parts.push({id:'nac_r', relX:105, relY:100, hp:4000*opMult, maxHp:4000*opMult, radius:22, color:'#ff6600', isDead:false, phase:0, label:'PROPELLER'});
+      // Phase 1: Turrets on side fins and gondola
+      this.parts.push({id:'tur_ll', relX:-235, relY:5, hp:3500*opMult, maxHp:3500*opMult, radius:22, color:'#ff8800', isDead:false, phase:1, label:'TURRET'});
+      this.parts.push({id:'tur_l', relX:-80, relY:85, hp:3500*opMult, maxHp:3500*opMult, radius:22, color:'#ff8800', isDead:false, phase:1, label:'TURRET'});
+      this.parts.push({id:'tur_r', relX:80, relY:85, hp:3500*opMult, maxHp:3500*opMult, radius:22, color:'#ff8800', isDead:false, phase:1, label:'TURRET'});
+      this.parts.push({id:'tur_rr', relX:235, relY:5, hp:3500*opMult, maxHp:3500*opMult, radius:22, color:'#ff8800', isDead:false, phase:1, label:'TURRET'});
+      // Phase 2: Gondola command center
+      this.parts.push({id:'hull', relX:0, relY:105, hp:2000*opMult, maxHp:2000*opMult, radius:38, color:'#ff2200', isDead:false, phase:2, label:'GONDOLA'});
       totalBossHp = 28000 * opMult;
     } else if (waveNum === 10) {
       this.name = "FINAL COLOSSUS";
@@ -890,7 +1291,7 @@ class Boss {
       this.parts.push({id:'can_c', relX:0, relY:-110, hp:6000*opMult, maxHp:6000*opMult, radius:34, color:'#ff8800', isDead:false, phase:1, label:'CANNON'});
       this.parts.push({id:'can_r', relX:100, relY:-80, hp:5500*opMult, maxHp:5500*opMult, radius:30, color:'#ff8800', isDead:false, phase:1, label:'CANNON'});
       this.parts.push({id:'can_rr', relX:190, relY:-50, hp:5500*opMult, maxHp:5500*opMult, radius:30, color:'#ff8800', isDead:false, phase:1, label:'CANNON'});
-      this.parts.push({id:'core', relX:0, relY:0, hp:14000*opMult, maxHp:14000*opMult, radius:90, color:'#ff0000', isDead:false, phase:2, label:'CORE'});
+      this.parts.push({id:'core', relX:0, relY:0, hp:4667*opMult, maxHp:4667*opMult, radius:90, color:'#ff0000', isDead:false, phase:2, label:'CORE'});
       totalBossHp = 80000 * opMult;
     }
     
@@ -900,15 +1301,22 @@ class Boss {
     this.targetY = waveNum === 6 ? 120 : (waveNum === 10 ? 150 : 170);
     this.introPhase = true;
     this.fireTimer = 0; this.pattern = 0; this.patternTimer = 0;
-    this.attackPhaseTimer = 0; this.attackInterval = 40; 
+    this.attackPhaseTimer = 0; this.attackInterval = 60; 
     this.inAttack = false; this.attackBurstTimer = 0;
     this.burnTimer = 0; this.hitCount = 0; this.direction = 1; this.slowed = false;
+    this.stunTimer = 0; this.spinAngle = 0;
+    this.acePilotTimer = 0;
   }
   
   checkCurrentPhase() {
     let phaseParts = this.parts.filter(p => p.phase === this.currentPhase && !p.isDead);
     if (phaseParts.length === 0) {
+      const prevPhase = this.currentPhase;
       this.currentPhase++;
+      // Stun only when engines are destroyed (phase 0→1), NOT when guns destroyed (1→2, that causes spinning)
+      if (prevPhase === 0) {
+        this.stunTimer = 120; // 2-second stun for engine destruction only
+      }
       if (this.currentPhase === 1) { 
         let msg = this.waveNum === 10 ? "ENGINES DOWN! DESTROY THE CANNONS!" : "ENGINES DOWN! TARGET THE GUNS!";
         showNotification(msg); cameraShake = 20; 
@@ -949,6 +1357,13 @@ class Boss {
     
     if (this.currentPhase !== undefined && this.currentPhase !== 99 && this.currentPhase > 2) return;
     
+    // 3-second stun when a part is destroyed
+    if (this.stunTimer > 0) {
+        this.stunTimer--;
+        spawnParticles(this.x, this.y, '#00ffff', 2);
+        return;
+    }
+    
     let baseSpeedMult = this.slowed ? 0.60 : 1.0;
     let totalEngines = this.parts.filter(p => p.label === 'ENGINE' || p.label === 'PROPELLER').length;
     let aliveEngines = this.parts.filter(p => (p.label === 'ENGINE' || p.label === 'PROPELLER') && !p.isDead).length;
@@ -956,9 +1371,21 @@ class Boss {
         baseSpeedMult *= (0.3 + 0.7 * (aliveEngines / totalEngines));
     }
     
+    // Spinning/crashing motion when engines AND guns are dead (phase 2 = hull/core)
+    let enginesAllDead = aliveEngines === 0;
+    let aliveGuns = this.parts.filter(p => ['GUN','BATTERY','TURRET','CANNON'].includes(p.label) && !p.isDead).length;
+    let gunsAllDead = aliveGuns === 0;
+    let isSpinning = enginesAllDead && gunsAllDead;
+    
     if (this.introPhase) {
         if (this.y < this.targetY) { this.y += 5.0 * baseSpeedMult; } 
         else { this.y = this.targetY; this.introPhase = false; }
+    } else if (isSpinning) {
+        // Dramatic spinning/crashing motion
+        this.spinAngle += 0.05;
+        this.x += Math.sin(frameCount * 0.07) * 9 * baseSpeedMult;
+        this.y = this.targetY + Math.sin(frameCount * 0.12) * 40 + Math.sin(frameCount * 0.035) * 20;
+        spawnParticles(this.x + (Math.random()-0.5)*100, this.y + (Math.random()-0.5)*80, '#ff4400', 3);
     } else {
         if (this.waveNum === 6) {
             this.x += this.speed * 2.5 * this.direction * baseSpeedMult;
@@ -976,6 +1403,21 @@ class Boss {
         }
     }
     
+    // Boss 2 (wave 6): spawn ace pilot - only 1 at a time, 10sec cooldown after destroyed
+    if (this.waveNum === 6 && !this.introPhase && !inIntermission) {
+        let activeAce = enemies.some(e => e.subType === 'ace' && !e.isCrashing);
+        if (!activeAce) {
+            this.acePilotTimer++;
+            if (this.acePilotTimer >= 600) { // 10 sec cooldown after ace is destroyed
+                this.acePilotTimer = 0;
+                enemies.push(new Enemy(wave, 'ace_pilot'));
+                showNotification("ACE PILOT LAUNCHED!");
+            }
+        } else {
+            this.acePilotTimer = 0; // reset timer while ace is alive
+        }
+    }
+    
     if (!inIntermission && !this.introPhase) {
         this.patternTimer++;
         this.attackPhaseTimer++;
@@ -989,19 +1431,19 @@ class Boss {
             this.inAttack = true;
             this.attackBurstTimer = 0;
             this.pattern = (this.pattern + 1) % numPatterns;
-            this.attackInterval = this.waveNum === 10 ? 80 + Math.random() * 40 : 40 + Math.random() * 30;
-            if (isRageMode) this.attackInterval = 25; 
+            // Increased cooldown between attack strikes
+            this.attackInterval = this.waveNum === 10 ? 180 + Math.random() * 90 : (this.waveNum === 9 ? 120 + Math.random() * 70 : 110 + Math.random() * 60);
+            if (isRageMode) this.attackInterval = 45; 
         }
         
         if (this.inAttack) {
             this.attackBurstTimer++;
             this.fireTimer++;
             
-// Fire interval verhoogd voor Boss 10 zodat hij minder spammt
-            let fireInterval = this.waveNum === 10 ? (this.pattern === 2 ? 160 : (this.pattern === 1 ? 120 : 80)) : (this.waveNum === 3 ? 22 : (this.waveNum === 6 ? 18 : 14));
+            let fireInterval = this.waveNum === 10 ? (this.pattern === 2 ? 160 : (this.pattern === 1 ? 120 : 80)) : (this.waveNum === 3 ? 26 : (this.waveNum === 6 ? 20 : 16));
             
             if (this.currentPhase === 0) {
-                fireInterval *= 5; 
+                fireInterval *= 6; 
             } else if (isRageMode) {
                 fireInterval = 6; 
             } else if (this.currentPhase === 1) {
@@ -1010,7 +1452,6 @@ class Boss {
 
             if (this.fireTimer >= fireInterval) { this.fireTimer = 0; this.shoot(); }
             
-            // Burst duration verlaagd (was 180) zodat de aanvalspauzes eerlijker zijn
             let burstDuration = this.waveNum === 10 ? 110 : 90;          
             if (isRageMode) burstDuration = 5; 
             if (this.currentPhase === 0) burstDuration = Math.floor(burstDuration * 1.5); 
@@ -1026,115 +1467,162 @@ class Boss {
     let activeGuns = this.parts.filter(p => !p.isDead && ['GUN', 'BATTERY', 'TURRET', 'CANNON'].includes(p.label));
     
     if (activeGuns.length === 0) return; 
+    
+    // Helper: get muzzle position at barrel tip (barrel length = part.radius)
+    const muzzle = (g) => {
+        let cx = this.x + g.relX, cy = this.y + g.relY;
+        let ba = Math.atan2(player.y - cy, player.x - cx);
+        return { x: cx + Math.cos(ba) * g.radius, y: cy + Math.sin(ba) * g.radius, angle: ba };
+    };
 
-    // RAGE MODE voor ELKE boss, inclusief custom effect voor Wave 10
+    // RAGE MODE - last gun standing: all bosses fire desperately
     if (this.currentPhase === 1 && activeGuns.length === 1) {
         let g = activeGuns[0];
-        let bx = this.x + g.relX; let by = this.y + g.relY;
-        let ba = Math.atan2(player.y - by, player.x - bx);
+        let m = muzzle(g);
         
-        // 7 kogels per burst in wijd verspreide vorm
-        for(let i = -3; i <= 3; i++) {
-            let b = new Bullet(bx, by, Math.cos(ba + i*0.12)*14, Math.sin(ba + i*0.12)*14, '#ff0000', true, 'NONE', false, 60);
-            b.size = 11; bullets.push(b);
-        }
-        
-        // Wave 10 voegt ook nog wanhopige bommen toe in rage mode!
-        if (this.waveNum === 10) {
-            if (Math.random() < 0.3) {
-                let bomb = new Bullet(bx, by, Math.cos(ba)*5, Math.sin(ba)*5, '#ff8800', true, 'NONE', true, 100, { bigExplosion: true });
-                bomb.size = 20; bullets.push(bomb);
+        if (this.waveNum === 3) {
+            for(let i = -4; i <= 4; i++) {
+                let b = new Bullet(m.x, m.y, Math.cos(m.angle + i*0.1)*13, Math.sin(m.angle + i*0.1)*13, '#ff0000', true, 'NONE', false, 55);
+                b.size = 9; bullets.push(b);
+            }
+        } else if (this.waveNum === 6) {
+            for(let i = -2; i <= 2; i++) {
+                let b = new Bullet(m.x, m.y, Math.cos(m.angle + i*0.12)*14, Math.sin(m.angle + i*0.12)*14, '#ff0000', true, 'NONE', false, 90);
+                b.size = 13; bullets.push(b);
+            }
+        } else if (this.waveNum === 9) {
+            for(let i = -5; i <= 5; i++) {
+                let b = new Bullet(m.x, m.y, Math.cos(m.angle + i*0.18)*12, Math.sin(m.angle + i*0.18)*12, '#ff6600', true, 'NONE', false, 70);
+                b.size = 10; bullets.push(b);
+            }
+        } else {
+            for(let i = -3; i <= 3; i++) {
+                let b = new Bullet(m.x, m.y, Math.cos(m.angle + i*0.12)*14, Math.sin(m.angle + i*0.12)*14, '#ff0000', true, 'NONE', false, 60);
+                b.size = 11; bullets.push(b);
             }
         }
         return; 
     }
 
     if (this.waveNum === 3) {
-      if (this.pattern === 0) {
+      // === BOSS 1: IRON HAWK - Volume of bullets ===
+      if (this.currentPhase === 0) {
         activeGuns.forEach(g => {
-            let bx = this.x + g.relX; let by = this.y + g.relY;
-            let ba = Math.atan2(player.y - by, player.x - bx);
-            let b = new Bullet(bx, by, Math.cos(ba)*10, Math.sin(ba)*10, '#ffaa00', true, 'NONE', false, 50); b.size=9; bullets.push(b);
+            let m = muzzle(g);
+            // Phase 0: 2× firepower = 2 shots per gun
+            for (let s = 0; s < 2; s++) {
+                let b = new Bullet(m.x, m.y, Math.cos(m.angle + (s-0.5)*0.15)*8, Math.sin(m.angle + (s-0.5)*0.15)*8, '#88ff88', true, 'NONE', false, 35); b.size=7; bullets.push(b);
+            }
         });
-      } else if (this.pattern === 1) {
-         activeGuns.forEach(g => {
-             let bx = this.x + g.relX; let by = this.y + g.relY;
-             for (let i=-1; i<=1; i++) {
-                 let b = new Bullet(bx, by, Math.cos(angle+i*0.2)*11, Math.sin(angle+i*0.2)*11, '#ff3300', true, 'NONE', false, 55); b.size=8; bullets.push(b);
-             }
-         });
-      } else if (this.pattern === 2) {
+      } else if (this.pattern === 0) {
         activeGuns.forEach(g => {
-            let b = new Bullet(this.x + g.relX, this.y + g.relY, Math.cos(angle)*14, Math.sin(angle)*14, '#ff6600', true, 'NONE', false, 80, {isMissile:true}); b.size=12; bullets.push(b);
-        });
-      }
-    } else if (this.waveNum === 6) {
-      if (this.pattern === 0) {
-        activeGuns.forEach(g => {
-            let bx = this.x + g.relX; let by = this.y + g.relY; let ba = Math.atan2(player.y - by, player.x - bx);
-            for (let i=-1; i<=1; i++) {
-                let b = new Bullet(bx, by, Math.cos(ba+i*0.12)*10, Math.sin(ba+i*0.12)*10, '#ffcc00', true, 'NONE', false, 60); b.size=8; bullets.push(b);
+            let m = muzzle(g);
+            for(let i=-2; i<=2; i++) {
+                let b = new Bullet(m.x, m.y, Math.cos(m.angle+i*0.14)*10, Math.sin(m.angle+i*0.14)*10, '#ffaa00', true, 'NONE', false, 50); b.size=8; bullets.push(b);
             }
         });
       } else if (this.pattern === 1) {
-        activeGuns.forEach((g, idx) => {
-            let offset = (idx - activeGuns.length/2) * 0.15;
-            let b = new Bullet(this.x + g.relX, this.y + g.relY, Math.cos(angle+offset)*11, Math.sin(angle+offset)*11, '#ff4400', true, 'NONE', false, 100, {isMissile:true}); b.size=11; bullets.push(b);
+        activeGuns.forEach(g => {
+            let m = muzzle(g);
+            for (let i=-1; i<=1; i++) {
+                let b = new Bullet(m.x, m.y, Math.cos(m.angle+i*0.2)*11, Math.sin(m.angle+i*0.2)*11, '#ff3300', true, 'NONE', false, 55); b.size=8; bullets.push(b);
+            }
         });
       } else if (this.pattern === 2) {
         activeGuns.forEach(g => {
-            for (let i=0; i<4; i++) {
-              let a = (i/4)*Math.PI*2 + frameCount*0.1; let b = new Bullet(this.x + g.relX, this.y + g.relY, Math.cos(a)*12, Math.sin(a)*12, '#00ffff', true, 'NONE', false, 45); b.size=8; bullets.push(b);
+            let m = muzzle(g);
+            let b = new Bullet(m.x, m.y, Math.cos(m.angle)*12, Math.sin(m.angle)*12, '#ff6600', true, 'NONE', false, 70, {isMissile:true}); b.size=11; bullets.push(b);
+        });
+      }
+    } else if (this.waveNum === 6) {
+      // === BOSS 2: STEEL CARRIER - Accurate heavy hits ===
+      if (this.currentPhase === 0) {
+        // Phase 0: 2× = 2 shots per battery
+        activeGuns.forEach(g => {
+            let m = muzzle(g);
+            for (let s = -1; s <= 1; s += 2) {
+                let b = new Bullet(m.x, m.y, Math.cos(m.angle+s*0.1)*10, Math.sin(m.angle+s*0.1)*10, '#88ff88', true, 'NONE', false, 40); b.size=8; bullets.push(b);
+            }
+        });
+      } else if (this.pattern === 0) {
+        activeGuns.forEach(g => {
+            let m = muzzle(g);
+            let b = new Bullet(m.x, m.y, Math.cos(m.angle)*12, Math.sin(m.angle)*12, '#ffcc00', true, 'NONE', false, 70); b.size=11; bullets.push(b);
+        });
+      } else if (this.pattern === 1) {
+        activeGuns.forEach((g) => {
+            let m = muzzle(g);
+            let b = new Bullet(m.x, m.y, Math.cos(m.angle)*11, Math.sin(m.angle)*11, '#ff4400', true, 'NONE', false, 100, {isMissile:true}); b.size=11; bullets.push(b);
+        });
+      } else if (this.pattern === 2) {
+        activeGuns.forEach(g => {
+            let m = muzzle(g);
+            for (let i=-1; i<=1; i++) {
+              let b = new Bullet(m.x, m.y, Math.cos(m.angle+i*0.18)*11, Math.sin(m.angle+i*0.18)*11, '#00ffff', true, 'NONE', false, 55); b.size=8; bullets.push(b);
             }
         });
       } else if (this.pattern === 3) {
         activeGuns.forEach(g => {
-          let b = new Bullet(this.x + g.relX, this.y + g.relY, Math.cos(angle)*12, Math.sin(angle)*12, '#ff8800', true, 'NONE', false, 70); b.size=10; bullets.push(b);
+          let m = muzzle(g);
+          let b = new Bullet(m.x, m.y, Math.cos(m.angle)*13, Math.sin(m.angle)*13, '#ff8800', true, 'NONE', false, 85); b.size=13; bullets.push(b);
         });
       }
     } else if (this.waveNum === 9) {
-      activeGuns.forEach(g => {
-          let bx = this.x + g.relX; let by = this.y + g.relY;
-          let ba = Math.atan2(player.y - by, player.x - bx);
+      // === BOSS 3: DOOM ZEPPELIN - Shotgun type ===
+      activeGuns.forEach((g, gIdx) => {
+          let m = muzzle(g);
           
-          if (this.pattern === 0) {
-             let b = new Bullet(bx, by, Math.cos(ba)*11, Math.sin(ba)*11, '#ff0000', true, 'NONE', false, 90); b.size=11; bullets.push(b);
+          if (this.currentPhase === 0) {
+            // Phase 0: 2× = both even AND odd guns fire (all fire, was every other)
+            let b = new Bullet(m.x, m.y, Math.cos(m.angle)*9, Math.sin(m.angle)*9, '#88ff88', true, 'NONE', false, 35); b.size=7; bullets.push(b);
+          } else if (this.pattern === 0) {
+            if (gIdx % 2 !== 0) return;
+            for(let i=-1; i<=1; i++) {
+                let b = new Bullet(m.x, m.y, Math.cos(m.angle+i*0.28)*9, Math.sin(m.angle+i*0.28)*9, '#ff0000', true, 'NONE', false, 80); b.size=10; bullets.push(b);
+            }
           } else if (this.pattern === 1) {
-             let b = new Bullet(bx, by, Math.cos(ba)*12, Math.sin(ba)*12, '#ff6600', true, 'NONE', false, 120, {isMissile:true}); b.size=13; bullets.push(b);
+            if (gIdx % 2 === 0) return;
+            for(let i=-1; i<=1; i++) {
+                let b = new Bullet(m.x, m.y, Math.cos(m.angle+i*0.30)*8, Math.sin(m.angle+i*0.30)*8, '#ff6600', true, 'NONE', false, 65, {isMissile:true}); b.size=11; bullets.push(b);
+            }
           } else if (this.pattern === 2) {
-             for (let i=-1; i<=1; i++) {
-                 let b = new Bullet(bx, by, Math.cos(ba+i*0.2)*10, Math.sin(ba+i*0.2)*10, '#ff2200', true, 'NONE', false, 75); b.size=9; bullets.push(b);
-             }
+            for (let i=-1; i<=1; i++) {
+                if (gIdx % 2 !== 0 && i !== 0) continue;
+                let b = new Bullet(m.x, m.y, Math.cos(m.angle+i*0.24)*9, Math.sin(m.angle+i*0.24)*9, '#ff2200', true, 'NONE', false, 70); b.size=9; bullets.push(b);
+            }
           } else if (this.pattern === 3) {
-             let b = new Bullet(bx, by, Math.cos(ba)*14, Math.sin(ba)*14, '#ffcc00', true, 'NONE', false, 80); b.size=9; bullets.push(b);
+            let b = new Bullet(m.x, m.y, Math.cos(m.angle)*13, Math.sin(m.angle)*13, '#ffcc00', true, 'NONE', false, 80); b.size=10; bullets.push(b);
           } else {
-             let a = frameCount * 0.1; 
-             let b = new Bullet(bx, by, Math.cos(a)*16, Math.sin(a)*16, '#ff8800', true, 'NONE', false, 100, {isMissile:true}); b.size=12; bullets.push(b);
+            if (gIdx % 2 !== 0) return;
+            let b = new Bullet(m.x, m.y, Math.cos(m.angle)*9, Math.sin(m.angle)*9, '#ff8800', true, 'NONE', false, 95, {isMissile:true}); b.size=13; bullets.push(b);
           }
       });
     } else if (this.waveNum === 10) {
         activeGuns.forEach((g, idx) => {
-            let bx = this.x + g.relX; let by = this.y + g.relY;
-            let ba = Math.atan2(player.y - by, player.x - bx);
+            let m = muzzle(g);
 
-            if (this.pattern === 0) {
-                let b = new Bullet(bx, by, Math.cos(ba)*7, Math.sin(ba)*7, '#ff0000', true, 'NONE', false, 60);
+            if (this.currentPhase === 0) {
+                // Phase 0: 2× = all cannons fire regardless of idx
+                let b = new Bullet(m.x, m.y, Math.cos(m.angle)*7, Math.sin(m.angle)*7, '#ff0000', true, 'NONE', false, 60);
+                b.size = 9; bullets.push(b);
+            } else if (this.pattern === 0) {
+                let b = new Bullet(m.x, m.y, Math.cos(m.angle)*7, Math.sin(m.angle)*7, '#ff0000', true, 'NONE', false, 60);
                 b.size = 9; bullets.push(b);
             } else if (this.pattern === 1) {
                 if (idx % 2 === 0) {
-                    let b = new Bullet(bx, by, Math.cos(ba)*3.5, Math.sin(ba)*3.5, '#ff8800', true, 'NONE', true, 90, { bigExplosion: true });
+                    let b = new Bullet(m.x, m.y, Math.cos(m.angle)*3.5, Math.sin(m.angle)*3.5, '#ff8800', true, 'NONE', true, 90, { bigExplosion: true });
                     b.size = 18; bullets.push(b);
                 }
             } else if (this.pattern === 2) {
                 if (idx === 0 || idx === activeGuns.length - 1) {
-                    enemies.push(new Enemy(wave, 'boss_missile', bx, by));
+                    enemies.push(new Enemy(wave, 'boss_missile', m.x, m.y));
                 }
             } else {
                 if (idx % 2 !== 0) {
-                    let b = new Bullet(bx, by, Math.cos(ba)*6, Math.sin(ba)*6, '#ff0000', true, 'NONE', false, 60);
+                    let b = new Bullet(m.x, m.y, Math.cos(m.angle)*6, Math.sin(m.angle)*6, '#ff0000', true, 'NONE', false, 60);
                     b.size = 9; bullets.push(b);
                 } else if (Math.random() < 0.5) {
-                    let b = new Bullet(bx, by, Math.cos(ba)*3, Math.sin(ba)*3, '#ff8800', true, 'NONE', true, 90, { bigExplosion: true });
+                    let b = new Bullet(m.x, m.y, Math.cos(m.angle)*3, Math.sin(m.angle)*3, '#ff8800', true, 'NONE', true, 90, { bigExplosion: true });
                     b.size = 18; bullets.push(b);
                 }
             }
@@ -1144,6 +1632,13 @@ class Boss {
   
   draw() {
     ctx.save(); ctx.translate(this.x, this.y);
+    
+    // Spin dramatically when engines AND guns are both destroyed
+    let _aliveEng = this.parts.filter(p => (p.label === 'ENGINE' || p.label === 'PROPELLER') && !p.isDead).length;
+    let _aliveGun = this.parts.filter(p => ['GUN','BATTERY','TURRET','CANNON'].includes(p.label) && !p.isDead).length;
+    if (_aliveEng === 0 && _aliveGun === 0 && !this.isCrashing) {
+        ctx.rotate(this.spinAngle || 0);
+    }
     
     if (this.isCrashing) {
         let crashScale = Math.max(0.01, 1 - (75 - this.crashTimer)/75);
@@ -1169,37 +1664,119 @@ class Boss {
       ctx.strokeStyle = '#660000'; ctx.lineWidth = 1;
       for (let i=-200; i<=200; i+=80) { ctx.beginPath(); ctx.moveTo(i,-100); ctx.lineTo(i,120); ctx.stroke(); }
     } else if (this.waveNum === 3) {
-      ctx.shadowBlur = 20; ctx.shadowColor = '#00ff00';
-      ctx.fillStyle = '#1a2a1a'; ctx.fillRect(-140, -50, 280, 130);
-      ctx.fillStyle = '#111a11';
-      ctx.beginPath(); ctx.moveTo(-140,-20); ctx.lineTo(-210,40); ctx.lineTo(-210,70); ctx.lineTo(-140,70); ctx.fill();
-      ctx.beginPath(); ctx.moveTo(140,-20); ctx.lineTo(210,40); ctx.lineTo(210,70); ctx.lineTo(140,70); ctx.fill();
-      ctx.fillStyle = '#223322'; ctx.fillRect(-50, -95, 100, 55);
-      ctx.strokeStyle = '#336633'; ctx.lineWidth = 2;
-      ctx.strokeRect(-140,-50,280,130); ctx.strokeRect(-50,-95,100,55);
-      ctx.beginPath(); ctx.moveTo(-140,10); ctx.lineTo(140,10); ctx.stroke();
+      // IRON HAWK: Aggressive hawk-shaped fighter, swept wings, twin nacelles
+      ctx.shadowBlur = 20; ctx.shadowColor = '#44ff44';
+      // Main fuselage — elongated hawk body
+      ctx.fillStyle = '#1a3a1a';
+      ctx.beginPath();
+      ctx.moveTo(0, -120);   // nose
+      ctx.lineTo(30, -60);
+      ctx.lineTo(50, 80);
+      ctx.lineTo(-50, 80);
+      ctx.lineTo(-30, -60);
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = '#336633'; ctx.lineWidth = 2; ctx.stroke();
+      // Swept wings (hawk shape)
+      ctx.fillStyle = '#122a12';
+      ctx.beginPath(); ctx.moveTo(-40, -20); ctx.lineTo(-220, 50); ctx.lineTo(-200, 90); ctx.lineTo(-40, 60); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = '#224422'; ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(40, -20); ctx.lineTo(220, 50); ctx.lineTo(200, 90); ctx.lineTo(40, 60); ctx.closePath(); ctx.fill();
+      ctx.stroke();
+      // Wing-tip gun pods (phase 1 guns are at tips)
+      [-200, 200].forEach(wx => {
+          ctx.fillStyle = '#1a4a1a';
+          ctx.beginPath(); ctx.ellipse(wx, 65, 20, 35, 0, 0, Math.PI*2); ctx.fill();
+          ctx.strokeStyle = '#44aa44'; ctx.lineWidth = 1.5; ctx.stroke();
+      });
+      // Twin rear engines
+      ctx.fillStyle = '#0d200d';
+      ctx.fillRect(-55, 60, 38, 50); ctx.strokeStyle = '#335533'; ctx.lineWidth = 2; ctx.strokeRect(-55, 60, 38, 50);
+      ctx.fillRect(17, 60, 38, 50); ctx.strokeRect(17, 60, 38, 50);
+      // Cockpit
+      ctx.fillStyle = '#2a6a2a';
+      ctx.beginPath(); ctx.ellipse(0, -60, 18, 30, 0, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#88ff88'; ctx.beginPath(); ctx.ellipse(-3, -68, 7, 12, 0, 0, Math.PI*2); ctx.fill();
+      // Fuselage detail lines
+      ctx.strokeStyle = '#336633'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(-20, -40); ctx.lineTo(-30, 70); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(20, -40); ctx.lineTo(30, 70); ctx.stroke();
     } else if (this.waveNum === 6) {
-      ctx.shadowBlur = 20; ctx.shadowColor = '#00ff00';
-      ctx.fillStyle = '#112211'; ctx.fillRect(-200, -60, 400, 160);
-      ctx.fillStyle = '#0d1a0d';
-      ctx.fillRect(-250, -20, 60, 100); ctx.fillRect(190, -20, 60, 100);
-      ctx.fillStyle = '#1a3a1a'; ctx.fillRect(-30, -110, 60, 60);
-      ctx.fillStyle = '#224422'; ctx.fillRect(-60, -80, 120, 30);
-      ctx.strokeStyle = '#336633'; ctx.lineWidth = 1.5;
-      ctx.strokeRect(-200,-60,400,160);
-      for (let i=-150; i<=150; i+=75) { ctx.beginPath(); ctx.moveTo(i,-60); ctx.lineTo(i,100); ctx.stroke(); }
+      // STEEL CARRIER: Wide armored carrier with bridge tower, armored hull plates
+      ctx.shadowBlur = 20; ctx.shadowColor = '#4488ff';
+      // Main carrier deck — wide flat armored hull
+      ctx.fillStyle = '#0d1e2e';
+      ctx.beginPath();
+      ctx.moveTo(-240, -70); ctx.lineTo(240, -70);
+      ctx.lineTo(260, 0); ctx.lineTo(240, 80);
+      ctx.lineTo(-240, 80); ctx.lineTo(-260, 0);
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = '#1a3a5a'; ctx.lineWidth = 2; ctx.stroke();
+      // Armored hull plates / panels
+      ctx.strokeStyle = '#224466'; ctx.lineWidth = 1;
+      for (let i = -200; i <= 200; i += 80) {
+          ctx.strokeRect(i - 35, -60, 70, 130);
+      }
+      // Side sponsons (gun mount housings) 
+      ctx.fillStyle = '#0a1825';
+      ctx.fillRect(-270, -30, 40, 100); ctx.strokeStyle = '#1a3a5a'; ctx.lineWidth = 1.5; ctx.strokeRect(-270, -30, 40, 100);
+      ctx.fillRect(230, -30, 40, 100); ctx.strokeRect(230, -30, 40, 100);
+      // Bridge tower
+      ctx.fillStyle = '#172636';
+      ctx.fillRect(-45, -140, 90, 80);
+      ctx.strokeStyle = '#2a4a6a'; ctx.lineWidth = 2; ctx.strokeRect(-45, -140, 90, 80);
+      ctx.fillStyle = '#0d1e30'; ctx.fillRect(-30, -150, 60, 20); ctx.strokeRect(-30, -150, 60, 20);
+      // Bridge windows
+      for (let wx = -35; wx <= 35; wx += 20) {
+          ctx.fillStyle = '#2266aa'; ctx.fillRect(wx, -130, 12, 8);
+      }
+      // Antenna mast
+      ctx.strokeStyle = '#3a6a9a'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(0, -150); ctx.lineTo(0, -190); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-20, -170); ctx.lineTo(20, -170); ctx.stroke();
+      // Deck markings
+      ctx.strokeStyle = '#336688'; ctx.lineWidth = 1; ctx.setLineDash([15, 10]);
+      ctx.beginPath(); ctx.moveTo(-230, 10); ctx.lineTo(230, 10); ctx.stroke();
+      ctx.setLineDash([]);
     } else if (this.waveNum === 9) {
-      ctx.shadowBlur = 20; ctx.shadowColor = '#ff4400';
-      ctx.fillStyle = '#221111';
-      ctx.beginPath(); ctx.ellipse(0, -10, 180, 90, 0, 0, Math.PI*2); ctx.fill();
-      ctx.strokeStyle = '#662222'; ctx.lineWidth = 2; ctx.stroke();
-      ctx.fillStyle = '#331a1a'; ctx.fillRect(-80, 60, 160, 50);
-      ctx.strokeStyle = '#ff4400'; ctx.lineWidth = 1.5; ctx.strokeRect(-80,60,160,50);
-      ctx.fillStyle = '#2a1010';
-      ctx.beginPath(); ctx.moveTo(-180,0); ctx.lineTo(-220,-40); ctx.lineTo(-220,40); ctx.fill();
-      ctx.beginPath(); ctx.moveTo(180,0); ctx.lineTo(220,-40); ctx.lineTo(220,40); ctx.fill();
-      ctx.strokeStyle = '#441111'; ctx.lineWidth = 1;
-      for (let i=-3; i<=3; i++) { ctx.beginPath(); ctx.ellipse(0, -10, 180, 90, i*0.2, 0, Math.PI*2); ctx.stroke(); }
+      // DOOM ZEPPELIN: Massive armored airship with gondola, ribs, tail fins
+      ctx.shadowBlur = 20; ctx.shadowColor = '#ff6600';
+      // Main envelope (blimp body)
+      ctx.fillStyle = '#2a1008';
+      ctx.beginPath(); ctx.ellipse(0, -15, 200, 105, 0, 0, Math.PI*2); ctx.fill();
+      ctx.strokeStyle = '#662211'; ctx.lineWidth = 2; ctx.stroke();
+      // Envelope structural ribs
+      ctx.strokeStyle = '#441a08'; ctx.lineWidth = 1.5;
+      for (let i = -4; i <= 4; i++) { 
+          ctx.beginPath(); ctx.ellipse(0, -15, 200, 105, i * 0.22, 0, Math.PI*2); ctx.stroke();
+      }
+      // Nose cone detail
+      ctx.fillStyle = '#3a1a0a';
+      ctx.beginPath(); ctx.ellipse(-195, -15, 12, 30, 0, 0, Math.PI*2); ctx.fill();
+      // Gondola (belly of the ship)
+      ctx.fillStyle = '#1a0808';
+      ctx.beginPath();
+      ctx.moveTo(-100, 75); ctx.lineTo(100, 75);
+      ctx.lineTo(110, 110); ctx.lineTo(80, 130); ctx.lineTo(-80, 130); ctx.lineTo(-110, 110);
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = '#ff4400'; ctx.lineWidth = 1.5; ctx.stroke();
+      // Gondola windows
+      for (let wx = -70; wx <= 70; wx += 35) {
+          ctx.fillStyle = '#ff2200'; ctx.beginPath(); ctx.arc(wx, 100, 7, 0, Math.PI*2); ctx.fill();
+      }
+      // Side fins
+      ctx.fillStyle = '#220a00';
+      ctx.beginPath(); ctx.moveTo(-190, 20); ctx.lineTo(-240, -40); ctx.lineTo(-240, 50); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = '#441100'; ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(190, 20); ctx.lineTo(240, -40); ctx.lineTo(240, 50); ctx.closePath(); ctx.fill();
+      ctx.stroke();
+      // Tail fins (top)
+      ctx.fillStyle = '#1a0600';
+      ctx.beginPath(); ctx.moveTo(-80, -95); ctx.lineTo(-120, -140); ctx.lineTo(-60, -95); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(80, -95); ctx.lineTo(120, -140); ctx.lineTo(60, -95); ctx.closePath(); ctx.fill();
+      // Engine nacelles on gondola
+      ctx.fillStyle = '#0a0808';
+      ctx.fillRect(-120, 88, 30, 25); ctx.strokeStyle = '#ff4400'; ctx.lineWidth = 1; ctx.strokeRect(-120, 88, 30, 25);
+      ctx.fillRect(90, 88, 30, 25); ctx.strokeRect(90, 88, 30, 25);
     }
     
     for (let part of this.parts) {
@@ -1216,12 +1793,21 @@ class Boss {
           ctx.beginPath(); ctx.arc(0, 0, part.radius, 0, Math.PI*2); ctx.fill();
       } else if (part.label === 'GUN' || part.label === 'BATTERY' || part.label === 'TURRET' || part.label === 'CANNON') {
           ctx.fillRect(-part.radius*0.7, -part.radius*0.7, part.radius*1.4, part.radius*1.4);
-          if (!part.isDead && part.phase === this.currentPhase) {
-            const barrelAngle = Math.atan2(player.y-(this.y+part.relY), player.x-(this.x+part.relX));
-            ctx.save(); ctx.rotate(barrelAngle);
-            ctx.fillStyle = '#888'; ctx.fillRect(-4, -part.radius, 8, part.radius);
-            ctx.restore();
+          // Barrel always visible — tracks player when alive, spins when dead
+          const barrelAngle = Math.atan2(player.y-(this.y+part.relY), player.x-(this.x+part.relX));
+          ctx.save();
+          if (part.isDead) {
+              // Spinning-out-of-control destroyed turret
+              if (!part._spinAngle) part._spinAngle = 0;
+              part._spinAngle += 0.12;
+              ctx.rotate(part._spinAngle);
+              ctx.fillStyle = '#444'; ctx.fillRect(-4, -part.radius, 8, part.radius * 0.8);
+          } else {
+              ctx.rotate(barrelAngle + Math.PI/2); // +PI/2 because barrel rect points UP at default
+              ctx.fillStyle = part.phase === this.currentPhase ? '#888' : '#555';
+              ctx.fillRect(-4, -part.radius, 8, part.radius);
           }
+          ctx.restore();
       } else { 
           ctx.beginPath(); ctx.arc(0, 0, part.radius*0.6, 0, Math.PI*2); ctx.fill();
       }
@@ -1265,7 +1851,7 @@ class Boss {
 class SecretBoss {
   constructor() {
     this.isBoss = true; this.isSecret = true; 
-    let opMult = 1 + (currentWeaponTier * 0.2);
+    let opMult = 1 + (currentWeaponTier * 0.15);
     this.name = "EUGENBURG DOOM-ENTITY";
     this.currentPhase = 0; 
     this.isCrashing = false; this.crashTimer = 0;
@@ -1273,25 +1859,21 @@ class SecretBoss {
     this.parts = [];
     let totalBossHp = 0;
     
-    // Phase 0: Engines
-    let engineHp = 7000 * opMult;
-    this.parts.push({id:'eng_ll', relX:-120, relY:80, hp:engineHp, maxHp:engineHp, radius:32, color:'#335533', isDead:false, phase:0, label:'ENGINE'});
-    this.parts.push({id:'eng_l', relX:-60, relY:100, hp:engineHp, maxHp:engineHp, radius:30, color:'#335533', isDead:false, phase:0, label:'ENGINE'});
-    this.parts.push({id:'eng_c', relX:0, relY:110, hp:engineHp, maxHp:engineHp, radius:34, color:'#335533', isDead:false, phase:0, label:'ENGINE'});
-    this.parts.push({id:'eng_r', relX:60, relY:100, hp:engineHp, maxHp:engineHp, radius:30, color:'#335533', isDead:false, phase:0, label:'ENGINE'});
-    this.parts.push({id:'eng_rr', relX:120, relY:80, hp:engineHp, maxHp:engineHp, radius:32, color:'#335533', isDead:false, phase:0, label:'ENGINE'});
-    totalBossHp += engineHp * 5;
+    // Phase 0: 4 Engines (2 aan elke zijkant - Tank Treads)
+    let engineHp = 6000 * opMult;
+    this.parts.push({id:'eng_tl', relX:-130, relY:-30, hp:engineHp, maxHp:engineHp, radius:28, color:'#335533', isDead:false, phase:0, label:'ENGINE'});
+    this.parts.push({id:'eng_bl', relX:-130, relY:50, hp:engineHp, maxHp:engineHp, radius:28, color:'#335533', isDead:false, phase:0, label:'ENGINE'});
+    this.parts.push({id:'eng_tr', relX:130, relY:-30, hp:engineHp, maxHp:engineHp, radius:28, color:'#335533', isDead:false, phase:0, label:'ENGINE'});
+    this.parts.push({id:'eng_br', relX:130, relY:50, hp:engineHp, maxHp:engineHp, radius:28, color:'#335533', isDead:false, phase:0, label:'ENGINE'});
+    totalBossHp += engineHp * 4;
     
-    // Phase 1: Guns (top corners)
-    let gunHp = 2500 * opMult;
-    this.parts.push({id:'gun_ll', relX:-150, relY:-80, hp:gunHp, maxHp:gunHp, radius:26, color:'#ff8800', isDead:false, phase:1, label:'GUN'});
-    this.parts.push({id:'gun_l', relX:-70, relY:-90, hp:gunHp, maxHp:gunHp, radius:26, color:'#ff8800', isDead:false, phase:1, label:'GUN'});
-    this.parts.push({id:'gun_r', relX:70, relY:-90, hp:gunHp, maxHp:gunHp, radius:26, color:'#ff8800', isDead:false, phase:1, label:'GUN'});
-    this.parts.push({id:'gun_rr', relX:150, relY:-80, hp:gunHp, maxHp:gunHp, radius:26, color:'#ff8800', isDead:false, phase:1, label:'GUN'});
-    totalBossHp += gunHp * 4;
+    // Phase 1: Eén Massieve Centrale Turret
+    let gunHp = 10000 * opMult;
+    this.parts.push({id:'turret', relX:0, relY:-20, hp:gunHp, maxHp:gunHp, radius:55, color:'#ff8800', isDead:false, phase:1, label:'GUN'});
+    totalBossHp += gunHp;
     
     // Phase 2: Core (center)
-    let coreHp = 5000 * opMult;
+    let coreHp = 2333 * opMult;
     this.parts.push({id:'core', relX:0, relY:0, hp:coreHp, maxHp:coreHp, radius:70, color:'#ff2200', isDead:false, phase:2, label:'CORE'});
     totalBossHp += coreHp;
     
@@ -1299,22 +1881,26 @@ class SecretBoss {
     this.x = width / 2; this.y = -300;
     this.targetY = 180;
     this.introPhase = true;
-    this.speed = 5.5; this.burnTimer = 0; this.angleOffset = 0; this.hitCount = 0; this.slowed = false;
-    this.fireTimer = 0; this.pattern = 0; this.patternTimer = 0;
-    this.attackPhaseTimer = 0; this.attackInterval = 40; 
-    this.inAttack = false; this.attackBurstTimer = 0;
+    this.speed = 3.5; this.burnTimer = 0; this.hitCount = 0; this.slowed = false;
     this.direction = 1;
+    this.stunTimer = 0; this.spinAngle = 0;
+    this.missileBurstCount = 0; this.missileBurstTimer = 0; this.missileReady = true;
+    this.bombTimer = 0;
   }
   
   checkCurrentPhase() {
     let phaseParts = this.parts.filter(p => p.phase === this.currentPhase && !p.isDead);
     if (phaseParts.length === 0) {
+      const prevPhase = this.currentPhase;
       this.currentPhase++;
+      if (prevPhase === 0) {
+        this.stunTimer = 120; // 2-second stun on engine clear
+      }
       if (this.currentPhase === 1) { 
-        showNotification("ENGINES DOWN! TARGET THE GUNS!"); cameraShake = 20; 
+        showNotification("TREADS DOWN! DESTROY THE TURRET!"); cameraShake = 20; 
       }
       else if (this.currentPhase === 2) { 
-        showNotification("GUNS DESTROYED! TARGET THE CORE!"); cameraShake = 30; 
+        showNotification("TURRET DOWN! TARGET THE CORE!"); cameraShake = 30; 
       }
     }
   }
@@ -1345,6 +1931,12 @@ class SecretBoss {
     
     if (this.currentPhase > 2) return;
     
+    if (this.stunTimer > 0) {
+        this.stunTimer--;
+        spawnParticles(this.x, this.y, '#00ffff', 2);
+        return;
+    }
+    
     let baseSpeedMult = this.slowed ? 0.60 : 1.0;
     let totalEngines = this.parts.filter(p => p.label === 'ENGINE').length;
     let aliveEngines = this.parts.filter(p => p.label === 'ENGINE' && !p.isDead).length;
@@ -1352,171 +1944,156 @@ class SecretBoss {
         baseSpeedMult *= (0.3 + 0.7 * (aliveEngines / totalEngines));
     }
     
+    let aliveGuns = this.parts.filter(p => p.label === 'GUN' && !p.isDead).length;
+    let isSpinning = aliveEngines === 0 && aliveGuns === 0;
+    
     if (this.introPhase) {
         if (this.y < this.targetY) { this.y += 5.0 * baseSpeedMult; } 
         else { this.y = this.targetY; this.introPhase = false; }
+    } else if (isSpinning) {
+        // Dramatic crashing spin for the WHOLE SHIP
+        this.spinAngle += 0.04;
+        this.x += Math.sin(frameCount * 0.09) * 10 * baseSpeedMult;
+        this.y = this.targetY + Math.sin(frameCount * 0.15) * 50 + Math.sin(frameCount * 0.04) * 25;
+        spawnParticles(this.x + (Math.random()-0.5)*120, this.y + (Math.random()-0.5)*100, '#ff4400', 3);
     } else {
-        this.x += this.speed * 3.0 * this.direction * baseSpeedMult;
-        if(this.x < width*0.15 || this.x > width*0.85) { this.direction *= -1; }
+        // Figure-8 — use self-tracked time so stun/phase-changes don't teleport the ship
+        if (this.moveT === undefined) {
+            // Initialise t so the figure-8 starts from current x position instead of center
+            this.moveT = Math.asin(Math.max(-1, Math.min(1, (this.x - width/2) / (width * 0.35))));
+        }
+        this.moveT += 0.025 * baseSpeedMult;
+        this.x = width/2 + Math.sin(this.moveT) * (width * 0.35);
+        this.y = this.targetY + Math.sin(this.moveT * 2) * 60;
     }
     
     if (!inIntermission && !this.introPhase) {
-        this.patternTimer++;
-        this.attackPhaseTimer++;
+        let turretAlive = this.parts.some(p => p.label === 'GUN' && !p.isDead);
         
-        let activeGunsCount = this.parts.filter(p => !p.isDead && p.label === 'GUN').length;
-        let isRageMode = (this.currentPhase === 1 && activeGunsCount === 1);
-
-        if (this.attackPhaseTimer >= this.attackInterval) {
-            this.attackPhaseTimer = 0;
-            this.inAttack = true;
-            this.attackBurstTimer = 0;
-            this.pattern = (this.pattern + 1) % 4;
-            this.attackInterval = 50 + Math.random() * 30;
-            if (isRageMode) this.attackInterval = 25; 
-        }
-        
-        if (this.inAttack) {
-            this.attackBurstTimer++;
-            this.fireTimer++;
-            
-            let fireInterval = 20;
-            
-            if (this.currentPhase === 0) {
-                fireInterval *= 5; 
-            } else if (isRageMode) {
-                fireInterval = 8; 
-            } else if (this.currentPhase === 1) {
-                fireInterval = Math.max(4, Math.floor(fireInterval * 0.6));
+        if (turretAlive) {
+            // Turret alive: fire missiles
+            this.missileBurstTimer++;
+            if (this.missileReady && this.missileBurstTimer >= 60) {
+                this.missileReady = false;
+                this.missileBurstCount = 0;
+                this.missileBurstTimer = 0;
             }
-
-            if (this.fireTimer >= fireInterval) { this.fireTimer = 0; this.shoot(); }
-            
-            let burstDuration = 100;          
-            if (isRageMode) burstDuration = 5; 
-            if (this.currentPhase === 0) burstDuration = Math.floor(burstDuration * 1.5);
-
-            if (this.attackBurstTimer >= burstDuration) { this.inAttack = false; }
+            if (!this.missileReady) {
+                if (this.missileBurstCount < 1 && this.missileBurstTimer % 12 === 0) {
+                    this.shootMissile();
+                    this.missileBurstCount++;
+                    if (this.missileBurstCount >= 1) {
+                        this.missileReady = true;
+                        this.missileBurstTimer = 0;
+                    }
+                }
+            }
         }
+        
+        if (aliveEngines === 0 && turretAlive) {
+            // Engines dead AND turret alive: drop bombs
+            this.bombTimer++;
+            if (this.bombTimer >= 300) {
+                this.bombTimer = 0;
+                this.dropBombs();
+            }
+        }
+        // When turret is dead, no attacks — only core exposed
     }
   }
   
-  shoot() {
-    playEnemyGun('tank');
-    let angle = Math.atan2(player.y - this.y, player.x - this.x);
+shootMissile() {
+    playEnemyGun('missile');
     let activeGuns = this.parts.filter(p => !p.isDead && p.label === 'GUN');
+    // Als de turret nog leeft schieten we daaruit, anders uit de core
+    let fireParts = activeGuns.length > 0 ? activeGuns : this.parts.filter(p => p.label === 'CORE');
     
-    if (activeGuns.length === 0) return; 
-
-    // RAGE MODE when only 1 gun left
-    if (this.currentPhase === 1 && activeGuns.length === 1) {
-        let g = activeGuns[0];
-        let bx = this.x + g.relX; let by = this.y + g.relY;
+    fireParts.forEach(g => {
+        let bx = this.x + g.relX; 
+        let by = this.y + g.relY;
         let ba = Math.atan2(player.y - by, player.x - bx);
         
-        // 5 bullets in wide spread
-        for(let i = -2; i <= 2; i++) {
-            let b = new Bullet(bx, by, Math.cos(ba + i*0.15)*14, Math.sin(ba + i*0.15)*14, '#ff0000', true, 'NONE', false, 70);
-            b.size = 11; bullets.push(b);
-        }
-        
-        // Add bombs
-        if (Math.random() < 0.4) {
-            let bomb = new Bullet(bx, by, Math.cos(ba)*5, Math.sin(ba)*5, '#ff8800', true, 'NONE', true, 120, { bigExplosion: true });
-            bomb.size = 20; bullets.push(bomb);
-        }
-        return; 
-    }
+        // We maken 4 raketten aan
+        for (let i = 0; i < 4; i++) {
+            // De 'spread' bepaalt de afstand tussen de raketten. 
+            // -150, -50, 50, 150 zorgt voor een breedte van 300 pixels totaal.
+            let offset = -150 + (i * 100); 
+            
+            // Bereken de positie loodrecht op de schietrichting zodat ze netjes naast elkaar staan
+            let spawnX = bx + Math.cos(ba + Math.PI/2) * offset;
+            let spawnY = by + Math.sin(ba + Math.PI/2) * offset;
 
-    if (this.currentPhase === 0) {
-        // Engine phase - light fire
-        activeGuns.forEach(g => {
-            let bx = this.x + g.relX; let by = this.y + g.relY;
-            let ba = Math.atan2(player.y - by, player.x - bx);
-            let b = new Bullet(bx, by, Math.cos(ba)*9, Math.sin(ba)*9, '#ffff00', true, 'NONE', false, 40); b.size=7; bullets.push(b);
-        });
-    } else if (this.currentPhase === 1) {
-        // Gun phase - heavy fire
-        if (this.pattern === 0) {
-            activeGuns.forEach(g => {
-                let bx = this.x + g.relX; let by = this.y + g.relY;
-                let ba = Math.atan2(player.y - by, player.x - bx);
-                for (let i=-1; i<=1; i++) {
-                    let b = new Bullet(bx, by, Math.cos(ba+i*0.15)*11, Math.sin(ba+i*0.15)*11, '#ff3300', true, 'NONE', false, 60); b.size=8; bullets.push(b);
-                }
-            });
-        } else if (this.pattern === 1) {
-            activeGuns.forEach((g, idx) => {
-                let bx = this.x + g.relX; let by = this.y + g.relY;
-                let ba = Math.atan2(player.y - by, player.x - bx);
-                let b = new Bullet(bx, by, Math.cos(ba)*10, Math.sin(ba)*10, '#ff4400', true, 'NONE', true, 100, {isMissile:true}); b.size=11; bullets.push(b);
-            });
-        } else if (this.pattern === 2) {
-            activeGuns.forEach(g => {
-                for (let i=0; i<3; i++) {
-                  let a = (i/3)*Math.PI*2 + frameCount*0.1; let b = new Bullet(this.x + g.relX, this.y + g.relY, Math.cos(a)*12, Math.sin(a)*12, '#00ffff', true, 'NONE', false, 50); b.size=8; bullets.push(b);
-                }
-            });
-        } else if (this.pattern === 3) {
-            activeGuns.forEach(g => {
-              let ba = Math.atan2(player.y-(this.y+g.relY), player.x-(this.x+g.relX));
-              let b = new Bullet(this.x + g.relX, this.y + g.relY, Math.cos(ba)*12, Math.sin(ba)*12, '#ff8800', true, 'NONE', false, 70); b.size=9; bullets.push(b);
-            });
+            let b = new Bullet(
+                spawnX, 
+                spawnY, 
+                Math.cos(ba) * 32, // Snelheid (20% slomer dan de originele 40)
+                Math.sin(ba) * 32, 
+                '#ff6600', 
+                true, 
+                'NONE', 
+                false, 
+                120, 
+                {isMissile: true, wobbleRocket: true}
+            );
+            
+            b.size = 60; // Bijna zo groot als het spelersschip
+            bullets.push(b);
         }
-    } else if (this.currentPhase === 2) {
-        // Core phase - varied attack
-        let corePart = this.parts.find(p => p.label === 'CORE');
-        if (!corePart) return;
-        
-        let bx = this.x + corePart.relX; let by = this.y + corePart.relY;
-        let ba = Math.atan2(player.y - by, player.x - bx);
-        
-        if (this.pattern === 0) {
-            for(let i = -4; i <= 4; i++) { 
-                let a = (i/9) * Math.PI * 2 + this.angleOffset;
-                bullets.push(new Bullet(bx, by, Math.cos(a)*14, Math.sin(a)*14, '#ff00ff', true, 'NONE', false, 80));
-            }
-        } else if (this.pattern === 1) {
-            for (let i = -3; i <= 3; i++) {
-                let b = new Bullet(bx, by, Math.cos(ba)*12, Math.sin(ba)*12, '#ff0000', true, 'NONE', true, 130, {bigExplosion:true}); b.size=18; bullets.push(b);
-            }
-        } else if (this.pattern === 2) {
-            for (let i = -2; i <= 2; i++) {
-                let a = ba + (i / 2) * 0.4;
-                bullets.push(new Bullet(bx, by, Math.cos(a)*13, Math.sin(a)*13, '#ffcc00', true, 'NONE', false, 90));
-            }
-        } else {
-            for (let i = 0; i < 8; i++) {
-                let a = (i/8) * Math.PI * 2;
-                bullets.push(new Bullet(bx, by, Math.cos(a)*15, Math.sin(a)*15, '#ff2200', true, 'NONE', false, 75));
-            }
-        }
+    });
+  }
+  
+  dropBombs() {
+    let numBombs = 2 + Math.floor(Math.random() * 2);
+    for (let i = 0; i < numBombs; i++) {
+        let bx = this.x + (Math.random() - 0.5) * 200;
+        let by = this.y + 20;
+        let b = new Bullet(bx, by, (Math.random()-0.5)*2, 10, '#ff3300', true, 'NONE', true, 110, {isBomb: true});
+        b.size = 40; bullets.push(b);
     }
   }
   
   draw() {
     ctx.save(); ctx.translate(this.x, this.y);
     
+    // De body tolt wanneer phase 2 aan is.
+    let _sbEngAlive = this.parts.filter(p => p.label === 'ENGINE' && !p.isDead).length;
+    let _sbGunAlive = this.parts.filter(p => p.label === 'GUN' && !p.isDead).length;
+    if (_sbEngAlive === 0 && _sbGunAlive === 0 && !this.isCrashing) {
+        ctx.rotate(this.spinAngle || 0);
+    }
+    
     if (this.isCrashing) {
         let crashScale = Math.max(0.01, 1 - (75 - this.crashTimer)/75);
         ctx.scale(crashScale, crashScale);
         ctx.rotate(Math.sin(this.crashTimer * 0.1) * 0.2);
     }
-
-    ctx.shadowBlur = 20; ctx.shadowColor = '#ff0000';
-    ctx.fillStyle = '#220022'; ctx.beginPath();
-    for (let i = 0; i < 5; i++) {
-      let a = (i / 5) * Math.PI * 2 + frameCount * 0.04;
-      let x = Math.cos(a) * 110; let y = Math.sin(a) * 150;
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    }
-    ctx.closePath(); ctx.fill(); ctx.strokeStyle = '#ff0000'; ctx.lineWidth = 3; ctx.stroke();
     
-    // Draw all parts with proper targeting indicators
+    // --- NIEUW: Flying Tank Visuals ---
+    ctx.shadowBlur = 20; ctx.shadowColor = '#ff0000';
+    
+    // Tank chassis
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(-110, -90, 220, 180); 
+    ctx.strokeStyle = '#551111'; ctx.lineWidth = 4; ctx.strokeRect(-110, -90, 220, 180);
+    
+    // Front armor slope
+    ctx.fillStyle = '#220000';
+    ctx.beginPath(); ctx.moveTo(-110, 90); ctx.lineTo(-80, 130); ctx.lineTo(80, 130); ctx.lineTo(110, 90); ctx.closePath(); ctx.fill();
+    ctx.stroke();
+    
+    // Treads (De bases voor de zij-engines)
+    ctx.fillStyle = '#0a0a0a';
+    ctx.fillRect(-150, -70, 40, 140); 
+    ctx.fillRect(110, -70, 40, 140);  
+    ctx.strokeStyle = '#333'; ctx.lineWidth = 2;
+    ctx.strokeRect(-150, -70, 40, 140);
+    ctx.strokeRect(110, -70, 40, 140);
+    
+    // Teken alle onderdelen
     for (let part of this.parts) {
       ctx.save(); ctx.translate(part.relX, part.relY);
       
-      if (part.isDead) {
+      if (part.isDead && part.label !== 'GUN') {
           ctx.fillStyle = '#1a1a1a';
           if (frameCount % 8 === 0) spawnParticles(this.x + part.relX, this.y + part.relY, '#ff4400', 2);
       } else {
@@ -1525,17 +2102,36 @@ class SecretBoss {
       }
       
       if (part.label === 'ENGINE') {
-          ctx.beginPath(); ctx.arc(0, 0, part.radius, 0, Math.PI*2); ctx.fill();
+          if (!part.isDead) {
+              ctx.beginPath(); ctx.arc(0, 0, part.radius, 0, Math.PI*2); ctx.fill();
+              ctx.fillStyle = '#00ff66'; ctx.beginPath(); ctx.arc(0, 0, part.radius*0.4, 0, Math.PI*2); ctx.fill();
+          }
       } else if (part.label === 'GUN') {
-          ctx.fillRect(-part.radius*0.7, -part.radius*0.7, part.radius*1.4, part.radius*1.4);
-          if (!part.isDead && part.phase === this.currentPhase) {
-            const barrelAngle = Math.atan2(player.y-(this.y+part.relY), player.x-(this.x+part.relX));
-            ctx.save(); ctx.rotate(barrelAngle);
-            ctx.fillStyle = '#888'; ctx.fillRect(-4, -part.radius, 8, part.radius);
-            ctx.restore();
+          // --- TANK TURRET: always visible ---
+          if (part.isDead) {
+              // Spinning out of control
+              if (!part._spinAngle) part._spinAngle = 0;
+              part._spinAngle += 0.18;
+              ctx.save(); ctx.rotate(part._spinAngle);
+              ctx.fillStyle = '#2a2a2a';
+              ctx.beginPath(); ctx.arc(0, 0, part.radius, 0, Math.PI*2); ctx.fill(); 
+              ctx.fillStyle = '#111'; ctx.fillRect(-15, 0, 30, part.radius + 50);
+              ctx.restore();
+          } else {
+              ctx.beginPath(); ctx.arc(0, 0, part.radius, 0, Math.PI*2); ctx.fill();
+              ctx.strokeStyle = '#555'; ctx.lineWidth = 5; ctx.stroke();
+              // Barrel always visible, tracks player
+              const barrelAngle = Math.atan2(player.y-(this.y+part.relY), player.x-(this.x+part.relX));
+              ctx.save(); ctx.rotate(barrelAngle - Math.PI/2); // barrel rect extends in +y, so subtract PI/2
+              ctx.fillStyle = part.phase === this.currentPhase ? '#444' : '#2a2a2a';
+              ctx.fillRect(-20, -part.radius, 40, part.radius + 60);
+              ctx.fillStyle = '#111'; ctx.fillRect(-25, part.radius + 40, 50, 25);
+              ctx.restore();
           }
       } else if (part.label === 'CORE') {
-          ctx.beginPath(); ctx.arc(0, 0, part.radius, 0, Math.PI*2); ctx.fill();
+          if (!part.isDead) {
+              ctx.beginPath(); ctx.arc(0, 0, part.radius, 0, Math.PI*2); ctx.fill();
+          }
       }
       
       // VISUAL TARGET INDICATOR
@@ -1578,7 +2174,7 @@ class Bullet {
     this.marked = false; this.size = isEnemy ? (explosive && special && special.bigExplosion ? 18 : 7) : (explosive ? 6 : 4.5); this.life = 55; this.damage = damage;
     this.special = special; this.hitList = new Set();
   }
-  update() {
+update() {
     if (this.special && this.special.homing && !this.isEnemy) {
         let nearest = null; let minDist = 400;
         enemies.forEach(e => { let d = Math.hypot(this.x - e.x, this.y - e.y); if (d < minDist && !e.isCrashing) { minDist = d; nearest = e; } });
@@ -1593,15 +2189,37 @@ class Bullet {
         }
     }
 
+// --- NIEUW: Wobble Rocket logica (schommelt rond zijn basis-lijn) ---
+    if (this.special && this.special.wobbleRocket) {
+        if (this.special.baseAngle === undefined) {
+            this.special.baseAngle = Math.atan2(this.vy, this.vx);
+            this.special.baseSpeed = Math.hypot(this.vx, this.vy);
+            // Gebruik de X-positie voor een unieke variatie per raket
+            this.special.curveTime = (this.x * 0.5); 
+        }
+        this.special.curveTime += 0.35;
+        
+        // De 'wobble' (recoil effect)
+        let currentAngle = this.special.baseAngle + Math.sin(this.special.curveTime) * 0.2;
+        
+        this.vx = Math.cos(currentAngle) * this.special.baseSpeed;
+        this.vy = Math.sin(currentAngle) * this.special.baseSpeed;
+    }
+
     this.x += this.vx; this.y += this.vy; if (!this.isEnemy) this.life--;
     
     if (this.special && this.special.isMissile && frameCount % 4 === 0) {
-        spawnParticles(this.x, this.y - 10, '#aaaaaa', 2); spawnParticles(this.x, this.y - 12, '#ff4400', 1);
+        let trailSize = this.size > 40 ? 4 : 2;
+        spawnParticles(this.x, this.y - 10, '#aaaaaa', trailSize); spawnParticles(this.x, this.y - 12, '#ff4400', trailSize/2);
+    }
+    if (this.special && this.special.isBomb && frameCount % 6 === 0) {
+        spawnParticles(this.x, this.y, '#ff6600', 3); spawnParticles(this.x, this.y, '#ffaa00', 2);
     }
 
     if (this.x < -60 || this.x > width+60 || this.y < -60 || this.y > height+60 || (!this.isEnemy && this.life <= 0)) {
       if (this.explosive && !this.isEnemy) {
         spawnParticles(this.x, this.y, this.color, 48);
+        // ... (rest van je originele explosie logica blijft hetzelfde hieronder)
         enemies.forEach(other => { 
             if (other.isCrashing) return;
             if (other.isBoss) {
@@ -1621,6 +2239,7 @@ class Bullet {
       this.marked = true;
     }
   }
+
   draw() {
     ctx.save(); ctx.translate(this.x, this.y); ctx.shadowBlur = 11; ctx.shadowColor = this.color;
     if (!this.isEnemy && !this.explosive) {
@@ -1631,10 +2250,37 @@ class Bullet {
 
     if (this.special && this.special.isSlug) {
         ctx.fillStyle = '#ffeedd'; ctx.fillRect(-4, -18, 8, 36); ctx.shadowBlur = 15; ctx.shadowColor = '#ffffaa';
+    } else if (this.special && this.special.isBomb) {
+        // ... (jouw originele bom code) ...
+        ctx.shadowBlur = 25; ctx.shadowColor = '#ff4400';
+        ctx.fillStyle = '#222222'; ctx.beginPath(); ctx.arc(0, 0, this.size, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#ff2200'; ctx.fillRect(-this.size, -3, this.size*2, 6);
+        ctx.fillStyle = '#ffaa00'; ctx.beginPath(); ctx.arc(0, 0, this.size*0.35, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle = '#ffcc00'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(0, -this.size); ctx.lineTo(4, -this.size - 10); ctx.stroke();
+        if (frameCount % 4 < 2) { ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(4, -this.size-10, 3, 0, Math.PI*2); ctx.fill(); }
     } else if (this.special && this.special.isMissile) {
-        ctx.fillStyle = '#ff8800'; ctx.beginPath(); ctx.moveTo(0, 8); ctx.lineTo(4, 0); ctx.lineTo(4, -12); ctx.lineTo(-4, -12); ctx.lineTo(-4, 0); ctx.fill();
-        ctx.fillStyle = '#ff2200'; ctx.fillRect(-2, -16, 4, 4);
+        // --- NIEUW: Gigantische raket tekening ---
+        if (this.size >= 50) { 
+            ctx.shadowBlur = 30; ctx.shadowColor = '#ff4400';
+            ctx.fillStyle = '#aa0000';
+            ctx.beginPath(); 
+            ctx.moveTo(0, this.size); 
+            ctx.lineTo(this.size*0.3, 0); 
+            ctx.lineTo(this.size*0.3, -this.size*0.8); 
+            ctx.lineTo(-this.size*0.3, -this.size*0.8); 
+            ctx.lineTo(-this.size*0.3, 0); 
+            ctx.fill();
+            ctx.fillStyle = '#ffaa00'; 
+            ctx.fillRect(-this.size*0.2, -this.size*0.8, this.size*0.4, this.size*0.2);
+            // Engine vuur
+            ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(0, -this.size*0.8, 6, 0, Math.PI*2); ctx.fill();
+        } else {
+            ctx.fillStyle = '#ff8800'; ctx.beginPath(); ctx.moveTo(0, 8); ctx.lineTo(4, 0); ctx.lineTo(4, -12); ctx.lineTo(-4, -12); ctx.lineTo(-4, 0); ctx.fill();
+            ctx.fillStyle = '#ff2200'; ctx.fillRect(-2, -16, 4, 4);
+        }
     } else if (this.isEnemy) { 
+        // ... (rest van de draw functie is hetzelfde) ...
         if (this.explosive && this.special && this.special.bigExplosion) {
             ctx.shadowBlur = 20; ctx.shadowColor = '#ff6600';
             ctx.fillStyle = '#ff3300'; ctx.beginPath(); ctx.arc(0, 0, this.size, 0, Math.PI*2); ctx.fill();
@@ -1708,53 +2354,223 @@ class Wreck {
   }
 }
 
-class PlayerEscort {
+class Wingman {
   constructor(side) {
-    this.side = side;
-    this.x = player.x + side * 80;
+    this.side = side;  // -1 = left,  +1 = right
+    // Start offscreen
+    this.x = side < 0 ? -220 : width + 220;
     this.y = player.y;
-    this.fireTimer = 0;
-    this.life = 600; 
+    this.isEntering = true;
     this.marked = false;
+    this.isCrashing = false;
+    this.crashTimer = 0;
+    this.fireTimer = 0;
+    // Full part structure matching player
+    this.parts = {
+      body:      { hp:400, max:400 },
+      leftWing:  { hp:270, max:270 },
+      rightWing: { hp:270, max:270 },
+      engine:    { hp:330, max:330 },
+      gun:       { hp:300, max:300 }
+    };
   }
-  update() {
-    this.x = player.x + this.side * 80;
-    this.y = player.y - 10;
-    this.life--;
-    if (this.life <= 0) { this.marked = true; return; }
-    this.fireTimer++;
-    if (this.fireTimer >= 10) { 
-      this.fireTimer = 0;
-      let target = null; let minDist = 1200;
-      enemies.forEach(e => { if(e.isCrashing)return; let d = Math.hypot(this.x-e.x, this.y-e.y); if(d<minDist){minDist=d;target=e;} });
-      if (target) {
-        let angle = Math.atan2(target.y - this.y, target.x - this.x);
-        bullets.push(new Bullet(this.x, this.y-20, Math.cos(angle)*32, Math.sin(angle)*32, '#00ffcc', false, 'NONE', false, 40));
-        playRealisticGun('support');
-      } else {
-        bullets.push(new Bullet(this.x, this.y-20, 0, -32, '#00ffcc', false, 'NONE', false, 40));
+
+  totalHp()    { return Object.values(this.parts).reduce((s,p)=>s+p.hp,0); }
+  maxTotalHp() { return Object.values(this.parts).reduce((s,p)=>s+p.max,0); }
+
+  takeDamage(amount) {
+    if (this.isCrashing) return;
+    // Distribute to first alive part (priority: gun→engine→wings→body)
+    for (let k of ['gun','engine','leftWing','rightWing','body']) {
+      if (this.parts[k].hp > 0) {
+        this.parts[k].hp -= amount;
+        break;
       }
     }
+    // No sound effect for wingmen - removed playImpactSound()
+    updateWingmanHUD();
+    if (this.totalHp() <= 0) {
+      this.isCrashing = true;
+      this.crashTimer = 60;
+      spawnParticles(this.x, this.y, '#ff4400', 30);
+    }
   }
+
+  update() {
+    if (this.isCrashing) {
+      this.crashTimer--;
+      this.y += 5;
+      this.x += this.side * 1.5;
+      spawnParticles(this.x, this.y, '#ff4400', 4);
+      spawnParticles(this.x, this.y, '#444', 3);
+      if (this.crashTimer <= 0) { this.marked = true; updateWingmanHUD(); }
+      return;
+    }
+
+    // Formation target: one full player-width gap from player edge
+    // Player visual half-width ≈ 73px, full width ≈ 146px, wingman half ≈ 58px → offset 277
+    const formX = player.x + this.side * 277;
+    const formY = player.y;
+
+    if (this.isEntering) {
+      const dx = formX - this.x, dy = formY - this.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist < 8) { this.isEntering = false; this.x = formX; this.y = formY; }
+      else { const spd = 14; this.x += (dx/dist)*spd; this.y += (dy/dist)*spd; }
+    } else {
+      this.x += (formX - this.x) * 0.28;
+      this.y += (formY - this.y) * 0.28;
+    }
+
+    // Shoot straight up — 6 shots / sec (every 10 frames at 60fps, 2x faster)
+    this.fireTimer++;
+    if (this.fireTimer >= 10 && !inIntermission) {
+      this.fireTimer = 0;
+      this.shoot();
+    }
+    updateWingmanHUD();
+  }
+
+  shoot() {
+    const color = '#44ff88';
+    const dmg = 28;
+    const s = 2.08; // visual scale (2.6 * 0.8)
+    const muzzleY = this.y - 18 * s * 0.5;
+    if (wingmanTier === 0) {
+      bullets.push(new Bullet(this.x, muzzleY - 10, 0, -38, color, false, 'NONE', false, dmg));
+    } else if (wingmanTier === 1) {
+      // Double parallel
+      bullets.push(new Bullet(this.x - 14*s*0.5, muzzleY, 0, -38, color, false, 'NONE', false, dmg));
+      bullets.push(new Bullet(this.x + 11*s*0.5, muzzleY, 0, -38, color, false, 'NONE', false, dmg));
+    } else if (wingmanTier === 2) {
+      // Scatter
+      bullets.push(new Bullet(this.x - 14*s*0.5, muzzleY, -3, -38, color, false, 'NONE', false, dmg));
+      bullets.push(new Bullet(this.x + 11*s*0.5, muzzleY,  3, -38, color, false, 'NONE', false, dmg));
+    } else {
+      // Triple scatter
+      bullets.push(new Bullet(this.x - 18, muzzleY, -5, -38, color, false, 'NONE', false, dmg));
+      bullets.push(new Bullet(this.x,      muzzleY - 8, 0, -38, color, false, 'NONE', false, dmg));
+      bullets.push(new Bullet(this.x + 18, muzzleY,  5, -38, color, false, 'NONE', false, dmg));
+    }
+    playRealisticGun('support');
+  }
+
   draw() {
-    let alpha = this.life < 60 ? this.life / 60 : 1;
-    ctx.save(); ctx.globalAlpha = alpha; ctx.translate(this.x, this.y); ctx.scale(1.4, 1.4);
-    ctx.shadowBlur = 12; ctx.shadowColor = '#00ffcc';
-    ctx.fillStyle = '#113355';
-    ctx.beginPath(); ctx.moveTo(0, -18); ctx.lineTo(-12, 8); ctx.lineTo(12, 8); ctx.fill();
-    ctx.strokeStyle = '#00ffff'; ctx.lineWidth = 1.5; ctx.stroke();
-    ctx.fillStyle = '#00ffff'; ctx.fillRect(-2, -10, 4, 10);
-    ctx.globalAlpha = 1; ctx.restore();
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    let sc = 2.08; // 2.6 * 0.8
+    if (this.isCrashing) {
+      let cs = Math.max(0.01, 1 - (60 - this.crashTimer) / 60);
+      ctx.scale(sc * cs, sc * cs);
+    } else {
+      ctx.scale(sc, sc);
+    }
+
+    const engOk = this.parts.engine.hp > 0 && !this.isCrashing;
+
+    // Left engine pod
+    ctx.fillStyle = '#0a2a0a';
+    ctx.beginPath(); ctx.moveTo(-16,-8); ctx.lineTo(-14,-8); ctx.lineTo(-14,20); ctx.lineTo(-16,20); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#44ff44'; ctx.lineWidth = 0.5; ctx.stroke();
+    if (engOk) {
+      let eH = 10 + Math.random()*8;
+      let g = ctx.createLinearGradient(-15,20,-15,20+eH);
+      g.addColorStop(0,'#44ff44'); g.addColorStop(1,'rgba(0,200,0,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.moveTo(-17,20); ctx.lineTo(-15,20+eH); ctx.lineTo(-13,20); ctx.fill();
+    }
+    // Right engine pod
+    ctx.fillStyle = '#0a2a0a';
+    ctx.beginPath(); ctx.moveTo(14,-8); ctx.lineTo(16,-8); ctx.lineTo(16,20); ctx.lineTo(14,20); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#44ff44'; ctx.lineWidth = 0.5; ctx.stroke();
+    if (engOk) {
+      let eH = 10 + Math.random()*8;
+      let g = ctx.createLinearGradient(15,20,15,20+eH);
+      g.addColorStop(0,'#44ff44'); g.addColorStop(1,'rgba(0,200,0,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.moveTo(13,20); ctx.lineTo(15,20+eH); ctx.lineTo(17,20); ctx.fill();
+    }
+
+    // Left wing
+    const lwOk = this.parts.leftWing.hp > 0;
+    ctx.fillStyle = lwOk ? '#0d2a0d' : '#111';
+    ctx.beginPath(); ctx.moveTo(-8,0); ctx.lineTo(-28,16); ctx.lineTo(-26,22); ctx.lineTo(-14,16); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = lwOk ? '#44ff44' : '#333'; ctx.lineWidth = 0.5; ctx.stroke();
+
+    // Right wing
+    const rwOk = this.parts.rightWing.hp > 0;
+    ctx.fillStyle = rwOk ? '#0d2a0d' : '#111';
+    ctx.beginPath(); ctx.moveTo(8,0); ctx.lineTo(28,16); ctx.lineTo(26,22); ctx.lineTo(14,16); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = rwOk ? '#44ff44' : '#333'; ctx.lineWidth = 0.5; ctx.stroke();
+
+    // Hull
+    const bOk = this.parts.body.hp > 0;
+    const bPct = bOk ? this.parts.body.hp/this.parts.body.max : 0;
+    ctx.shadowBlur = bOk ? 12 : 0; ctx.shadowColor = '#44ff44';
+    ctx.fillStyle = bOk ? (bPct>0.5?'#0a2a14':(bPct>0.25?'#1a2a0a':'#2a1a0a')) : '#111';
+    ctx.beginPath();
+    ctx.moveTo(0,-26); ctx.lineTo(8,-12); ctx.lineTo(8,-2); ctx.lineTo(12,2); ctx.lineTo(12,14);
+    ctx.lineTo(-12,14); ctx.lineTo(-12,2); ctx.lineTo(-8,-2); ctx.lineTo(-8,-12);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = bOk ? '#44ff44' : '#333'; ctx.lineWidth = 0.6; ctx.stroke();
+
+    // Gun / muzzle
+    if (this.parts.gun.hp > 0) {
+      ctx.shadowBlur = 6; ctx.shadowColor = '#44ff88';
+      ctx.fillStyle = '#aaffaa';
+      ctx.fillRect(-14,-18,3,10); ctx.fillRect(11,-18,3,10);
+      ctx.fillStyle = '#44ff88'; ctx.fillRect(-1,-30,2,8);
+    }
+    // Cockpit
+    if (bOk) {
+      ctx.fillStyle = '#006622'; ctx.shadowBlur = 5; ctx.shadowColor = '#44ff44';
+      ctx.beginPath(); ctx.ellipse(0,-8,5,8,0,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#88ffcc'; ctx.beginPath(); ctx.ellipse(-1,-10,2,4,0,0,Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
   }
 }
 
-let escortShips = [];
+let escortShips = []; // kept for legacy compat, unused
 
-function spawnEscortShips() {
-  escortShips = [];
-  escortShips.push(new PlayerEscort(-1)); 
-  escortShips.push(new PlayerEscort(1));  
-  showNotification("ESCORT SHIPS DEPLOYED!");
+function spawnWingman() {
+  // Spawn 2 wingmen immediately (left and right) instead of 1 for 1
+  const usedSides = wingmen.filter(w=>!w.marked).map(w=>w.side);
+  
+  // Spawn left wingman if not present
+  if (!usedSides.includes(-1)) {
+    wingmen.push(new Wingman(-1));
+  }
+  
+  // Spawn right wingman if not present
+  if (!usedSides.includes(1)) {
+    wingmen.push(new Wingman(1));
+  }
+  
+  showNotification("WINGMEN INBOUND!");
+  playAudioFile(audioFiles.wingmanReady);
+  updateWingmanHUD();
+}
+
+function updateWingmanHUD() {
+  const hud = document.getElementById('wingman-hud');
+  const activeWingmen = wingmen.filter(w=>!w.marked);
+  if (activeWingmen.length === 0) { hud.style.display = 'none'; return; }
+  hud.style.display = 'block';
+  document.getElementById('wingman-tier-text').textContent = 'TIER ' + wingmanTier + (wingmanTier>=3?' (MAX)':'');
+
+  // Left wingman bar
+  const lw = activeWingmen.find(w=>w.side===-1);
+  const lFill = document.getElementById('wingman-left-fill');
+  const lBar  = document.getElementById('wingman-left-bar');
+  lBar.style.display = lw ? 'block':'none';
+  if (lw && !lw.isCrashing) lFill.style.width = Math.max(0, lw.totalHp()/lw.maxTotalHp()*100)+'%';
+
+  const rw = activeWingmen.find(w=>w.side===1);
+  const rFill = document.getElementById('wingman-right-fill');
+  const rBar  = document.getElementById('wingman-right-bar');
+  rBar.style.display = rw ? 'block':'none';
+  if (rw && !rw.isCrashing) rFill.style.width = Math.max(0, rw.totalHp()/rw.maxTotalHp()*100)+'%';
 }
 
 class Drop {
@@ -1792,6 +2608,19 @@ class Drop {
         ctx.fillStyle = '#ffd700'; ctx.shadowColor = '#ffd700'; ctx.shadowBlur = 16;
         ctx.beginPath(); ctx.arc(0,0,12,0,Math.PI*2); ctx.fill();
         ctx.fillStyle = '#000'; ctx.font = 'bold 14px Arial'; ctx.textAlign = 'center'; ctx.fillText('▲', 0, 5);
+    }
+    else if (this.type === 'WINGMAN_HEAL') {
+        // Green cross with small wing shape
+        ctx.shadowColor = '#44ff44'; ctx.shadowBlur = 16;
+        ctx.strokeStyle = '#44ff44'; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.arc(0,0,13,0,Math.PI*2); ctx.stroke();
+        ctx.fillStyle = '#44ff44'; ctx.font = 'bold 18px Arial'; ctx.textAlign = 'center'; ctx.fillText('♦', 0, 7);
+        ctx.fillStyle = '#00ff88'; ctx.font = 'bold 9px Arial'; ctx.fillText('WG', 0, -3);
+    }
+    else if (this.type === 'WINGMAN_UPGRADE') {
+        ctx.fillStyle = '#88ff44'; ctx.shadowColor = '#88ff44'; ctx.shadowBlur = 16;
+        ctx.beginPath(); ctx.arc(0,0,13,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#002200'; ctx.font = 'bold 12px Arial'; ctx.textAlign = 'center'; ctx.fillText('W▲', 0, 5);
     }
     ctx.restore();
   }
@@ -1904,6 +2733,7 @@ function initGame() {
   drawDamageModel(player.parts); 
   
   bullets = []; enemies = []; drops = []; particles = []; allies = []; wrecks = []; escortShips = [];
+  wingmen = []; wingmanTier = 0;
   score = 0; xp = 0; xpNeeded = 1000; wave = 1; waveTimer = 0; currentLevel = 1; bossActive = false; elementPower = 0; 
   pendingSupportPasses = 0; supportPassTimer = 0; bossSupportsUsed = 0; supportSpawnDelay = 0; globalFormationIdCounter = 0;
   superPowerMeter = 0; superPowerReady = false; aceSpawnedThisWave = false;
@@ -1924,7 +2754,7 @@ function spawnDiagonalKette() {
     const spacing = 90; 
     for (let i = 0; i < 3; i++) {
         let e = new Enemy(wave, 'diagonal-kette', cx + dir * i * spacing * 0.6, -150 - i * spacing * 0.8);
-        e.speed = 3.6 + Math.random() * 0.8;
+        e.speed = (3.6 + Math.random() * 0.8) * 2; // 2x zo snel
         e.formationId = globalFormationIdCounter;
         enemies.push(e);
     }
@@ -1936,7 +2766,7 @@ function spawnBox() {
     const offsets = [[-70,-60],[70,-60],[-70,60],[70,60]];
     offsets.forEach(([ox, oy]) => {
         let e = new Enemy(wave, 'box', cx + ox, oy - 150);
-        e.speed = 3.4 + Math.random() * 0.6;
+        e.speed = (3.4 + Math.random() * 0.6) * 2.3; // Iets OP (2.3x zo snel)
         e.formationId = globalFormationIdCounter;
         enemies.push(e);
     });
@@ -1949,7 +2779,7 @@ function spawnColumnSweep() {
         let e = new Enemy(wave, 'column-sweep', cx, -150 - i * 100);
         e.vy = 0; 
         e.rotation = Math.PI;
-        e.speed = 3.8 + Math.random() * 0.6;
+        e.speed = (3.8 + Math.random() * 0.6) * 2; // 2x zo snel
         e.formationId = globalFormationIdCounter;
         enemies.push(e);
     }
@@ -1968,6 +2798,19 @@ function spawnFighterWing() {
     }
 }
 
+function spawnSideSweep() {
+    globalFormationIdCounter++;
+    const side = Math.random() > 0.5 ? 1 : -1;
+    const startX = side === 1 ? -150 : width + 150;
+    const startY = 80 + Math.random() * (height * 0.35);
+    for (let i = 0; i < 3; i++) {
+        let e = new Enemy(wave, 'side-sweep', startX - side * i * 90, startY);
+        e.side = side;
+        e.formationId = globalFormationIdCounter;
+        enemies.push(e);
+    }
+}
+
 function spawnLogic() {
   if (bossActive || inIntermission || waveTimer >= FRAMES_PER_WAVE) return;
 
@@ -1977,26 +2820,32 @@ function spawnLogic() {
   let activeFormations = new Set();
   enemies.forEach(e => { if (e.formationId && !e.isCrashing) activeFormations.add(e.formationId); });
   
-  const maxFormations = wave >= 7 ? 2 : 1;
+  // 1.5x meer vijanden: Verhoog het maximum aantal formaties tegelijk
+  const maxFormations = wave >= 7 ? 3 : 2; 
   
-  if (activeFormations.size < maxFormations || (activeFormations.size < maxFormations && Math.random() < 0.02)) {
+  // Snellere kans op spawnen als we onder het limiet zitten
+  if (activeFormations.size < maxFormations || (activeFormations.size < maxFormations && Math.random() < 0.05)) {
     const formType = Math.random();
-    if (formType < 0.25) spawnDiagonalKette();
-    else if (formType < 0.50) spawnBox();
-    else if (formType < 0.75) spawnColumnSweep();
-    else spawnFighterWing();
+    
+    // 70% vanaf de zijkanten (side-sweep & fighter-wing)
+    if (formType < 0.35) spawnSideSweep();
+    else if (formType < 0.70) spawnFighterWing();
+    
+    // 30% van voren (diagonal, box, column)
+    else if (formType < 0.80) spawnDiagonalKette();
+    else if (formType < 0.90) spawnBox();
+    else spawnColumnSweep();
   }
 
-  // Mini-boss Bomber spawn
-  if (wave >= 2 && Math.random() < 0.003) {
+  if (wave >= 2 && Math.random() < 0.004) {
       let bomberCount = enemies.filter(e => e.subType === 'bomber').length;
       if (bomberCount === 0) enemies.push(new Enemy(wave, 'bomber'));
   }
 
-  // Ace Pilot spawnt exact 1 keer op waveTimer === 450 per 3e wave
-  if (wave % 3 === 0 && !aceSpawnedThisWave && waveTimer === 450) {
+  if (wave % 3 === 2 && !aceSpawnedThisWave && waveTimer === 450) {
       enemies.push(new Enemy(wave, 'ace_pilot'));
       aceSpawnedThisWave = true;
+      showNotification("ACE PILOT INCOMING!");
   }
 }
 
@@ -2021,7 +2870,7 @@ function checkCollisions() {
             for (let part of e.parts) {
                 if (b.hitList && b.hitList.has(part)) continue;
                 if (part.isDead || part.phase !== e.currentPhase) continue;
-                if (Math.hypot(b.x - (e.x + part.relX), b.y - (e.y + part.relY)) < part.radius + 12) {
+                if (Math.hypot(b.x - (e.x + part.relX), b.y - (e.y + part.relY)) < part.radius + 22) {
                     hitEngine = true;
                     part.hp -= finalDamage;
                     if (e.currentPhase === 99) e.hp -= finalDamage; 
@@ -2032,6 +2881,7 @@ function checkCollisions() {
                         spawnParticles(e.x + part.relX, e.y + part.relY, '#ff4400', 120);
                         spawnParticles(e.x + part.relX, e.y + part.relY, '#000000', 60);
                         cameraShake = 18;
+                        notifyPartDestroyed(e, part);
                         if (e.checkCurrentPhase) e.checkCurrentPhase();
                     } else {
                         spawnParticles(e.x + part.relX, e.y + part.relY, '#ffffff', 8);
@@ -2050,16 +2900,18 @@ function checkCollisions() {
             if (b.hitList) b.hitList.add(e);
         }
           
-        if (player.element === 'FIRE' || player.effects.burn || b.special.incendiary) e.burnTimer = 50;
-        if ((player.element === 'WATER' || player.effects.slow) && !e.isBoss) { e.slowed = true; setTimeout(() => e.slowed = false, 2300); }
-        if ((player.element === 'EARTH' && Math.random() < 0.15) || player.effects.stun) { e.stunned = true; e.stunTimer = 34; }
+        if (!e.isBoss && e.subType !== 'ace') {
+          if (player.element === 'FIRE' || player.effects.burn || b.special.incendiary) e.burnTimer = 50;
+          if ((player.element === 'WATER' || player.effects.slow)) { e.slowed = true; setTimeout(() => e.slowed = false, 2300); }
+          if ((player.element === 'EARTH' && Math.random() < 0.15) || player.effects.stun) { e.stunned = true; e.stunTimer = 34; }
+        }
         
         if (player.effects.chain) {
            let nearest = null; let minDist = 200;
            enemies.forEach(other => { if(other !== e && !other.isBoss && !other.isCrashing) { let d = Math.hypot(e.x - other.x, e.y - other.y); if(d < minDist) { minDist = d; nearest = other; } } });
            if (nearest) { nearest.hp -= b.damage * 0.8; spawnParticles((e.x + nearest.x)/2, (e.y + nearest.y)/2, '#00ffff', 5); if(nearest.hp <= 0) killEnemy(nearest); }
         }
-        if (player.effects.pushback && !e.isBoss) { e.y -= 30; }
+        if (player.effects.pushback && !e.isBoss) { e.y -= 1; }
 
         if (b.explosive || (b.special && b.special.plasmaArea) || (b.special && b.special.bigExplosion)) {
             let radius = (b.special && b.special.bigExplosion) ? 220 : 115;
@@ -2080,6 +2932,7 @@ function checkCollisions() {
                                     playAudioFile(audioFiles.bossExplosion);
                                     spawnParticles(other.x + part.relX, other.y + part.relY, '#ffaa00', 150);
                                     spawnParticles(other.x + part.relX, other.y + part.relY, '#000000', 80);
+                                    notifyPartDestroyed(other, part);
                                     if (other.checkCurrentPhase) other.checkCurrentPhase();
                                 } else {
                                     spawnParticles(other.x + part.relX, other.y + part.relY, '#ffffff', 10);
@@ -2130,6 +2983,17 @@ function checkCollisions() {
             spawnParticles(player.x, player.y, '#ff6600', 20); 
         }
       }
+      // Check wingman hits
+      if (!b.marked) {
+        wingmen.forEach(w => {
+          if (w.marked || w.isCrashing || w.isEntering) return;
+          if (Math.hypot(b.x - w.x, b.y - w.y) < 40) {
+            w.takeDamage(damage);
+            b.marked = true;
+            spawnParticles(w.x, w.y, '#44ff44', 8);
+          }
+        });
+      }
     }
   }
   
@@ -2137,13 +3001,29 @@ function checkCollisions() {
     if (e.isCrashing) return;
     if (e.isBoss) {
         if (e.currentPhase !== undefined && e.currentPhase !== 99 && e.currentPhase > 2) { killEnemy(e); }
-        else if (e.currentPhase === 99 && e.hp <= 0) { killEnemy(e); } 
+        else if (e.currentPhase === 99 && e.hp <= 0) { killEnemy(e); }
+        // Boss collision: trades 20% of player HP per second as damage
+        if (Math.hypot(e.x - player.x, e.y - player.y) < 150) {
+            let tradeHp = player.parts.body.max * 0.20 / 60;
+            player.takeDamage(tradeHp, e.x - player.x, e.y - player.y);
+        }
     } else {
         if (player.effects.invincible || player.isCrashing) return; 
         
-        let crashHitRadius = e.subType === 'boss_missile' ? e.size + 42 : e.size + 42;
+        let crashHitRadius = e.subType === 'boss_missile' ? e.size + 100 : e.size + 100;
         if (!e.isBoss && Math.hypot(e.x - player.x, e.y - player.y) < crashHitRadius) {
-            let dmg = e.subType === 'bomber' ? 100 : (e.subType === 'boss_missile' ? 150 : (e.subType === 'tank' ? 70 : 25));
+            let dmg;
+            if (e.subType === 'tank') {
+                // Tank: double damage (2x base 70 = 140)
+                dmg = 140;
+            } else if (e.subType === 'bomber') {
+                dmg = 100;
+            } else if (e.subType === 'boss_missile') {
+                dmg = 150;
+            } else {
+                // Regular enemy: trade their HP with yours
+                dmg = Math.min(e.hp, player.parts.body.max * 0.15);
+            }
             player.takeDamage(dmg, e.x - player.x, e.y - player.y); 
             e.hp = 0; spawnParticles(player.x, player.y, '#ff0000', 25); killEnemy(e);
         }
@@ -2166,14 +3046,22 @@ function killEnemy(e) {
   if (e.isCrashing) return;
   e.isCrashing = true;
   e.crashTimer = e.isBoss ? 75 : 22;
-  playAudioFile(audioFiles.explosion); 
+  
+  // SPEEL GELUIDEN DIRECT AF BIJ DE CRASH
+  if (e.isBoss) {
+    playAudioFile(audioFiles.bossDefeated);
+    playAudioFile(audioFiles.bossExplosion);
+  } else {
+    playAudioFile(audioFiles.explosion);
+    playAudioFile(audioFiles.enemyHit);
+  }
 }
 
 function finalizeKillEnemy(e) {
   score += e.isBoss ? 5000 : (e.subType === 'bomber' ? 500 : 150); 
 
   if (e.isBoss) {
-    playAudioFile(audioFiles.bossExplosion);
+    // GELUIDEN ZIJN HIER VERWIJDERD
     spawnParticles(e.x, e.y, '#ff4400', 100);
     spawnParticles(e.x, e.y, '#000000', 50);
     for (let i = 0; i < 4; i++) wrecks.push(new EnemyDescent(e.x + (Math.random() - 0.5) * 80, e.y, true, false));
@@ -2183,21 +3071,26 @@ function finalizeKillEnemy(e) {
     enemies = enemies.filter(en => en !== e);
     bossActive = false;
     if (e.isSecret) {
-        wave = 11; setTimeout(() => { victoryScreen(); }, 1500);
+        enemies = []; // Clear all enemies immediately
+        bossActive = true;
+        setTimeout(() => { victoryScreen(); }, 1500);
     } else {
-        wave++; startBGM('normal'); startIntermission(false);
+        wave++; startBGM('normal'); 
+        startIntermission(false); 
     }
   } else {
-    playAudioFile(audioFiles.explosion);
+    // GELUID IS HIER VERWIJDERD
     spawnParticles(e.x, e.y, '#ff8844', 15);
     spawnParticles(e.x, e.y, '#ff4400', 8);
     wrecks.push(new EnemyDescent(e.x, e.y, false, false));
     enemies = enemies.filter(en => en !== e);
     
-    if (Math.random() < (e.subType === 'bomber' ? 0.8 : 0.10)) { drops.push(new Drop(e.x, e.y, 'MEDAL')); }
-    if (e.subType === 'bomber' || Math.random() < 0.006) { drops.push(new Drop(e.x, e.y, 'ESCORT')); }
-    if (Math.random() < 0.006) { drops.push(new Drop(e.x, e.y, 'HEAL')); }
-    if (Math.random() < 0.02) { drops.push(new Drop(e.x, e.y, 'UPGRADE')); }
+    if (Math.random() < (e.subType === 'bomber' ? 0.85 : (e.subType === 'ace' ? 1.0 : 0.13))) { drops.push(new Drop(e.x, e.y, 'MEDAL')); }
+    if (e.subType === 'bomber' || e.subType === 'ace' || Math.random() < 0.008) { drops.push(new Drop(e.x, e.y, 'ESCORT')); }
+    if (Math.random() < 0.009) { drops.push(new Drop(e.x, e.y, 'HEAL')); }
+    if (Math.random() < 0.025) { drops.push(new Drop(e.x, e.y, 'UPGRADE')); }
+    if (wingmen.filter(w=>!w.marked).length > 0 && Math.random() < 0.018) { drops.push(new Drop(e.x, e.y, 'WINGMAN_HEAL')); }
+    if (wingmanTier < 3 && wingmen.filter(w=>!w.marked).length > 0 && Math.random() < 0.02) { drops.push(new Drop(e.x, e.y, 'WINGMAN_UPGRADE')); }
     
     if (!superPowerReady) {
       superPowerMeter += e.subType === 'bomber' ? 5 : 1;
@@ -2267,13 +3160,34 @@ function collectDrop(type) {
   if (type === 'HEAL') {
     Object.keys(player.parts).forEach(k => { player.parts[k].hp = Math.min(player.parts[k].max, player.parts[k].hp + player.parts[k].max * 0.52); });
     drawDamageModel(player.parts); showNotification("SYSTEMS REPAIRED");
+    playAudioFile(audioFiles.heal);
   } else if (type === 'ESCORT') { 
-    spawnEscortShips();
+    spawnWingman();
   } else if (type === 'UPGRADE') {
     if (currentWeaponTier < 6) {
-        currentWeaponTier++; playUpgradeSound(); showNotification("WEAPON TIER " + currentWeaponTier + " UNLOCKED!");
+        currentWeaponTier++; showNotification("WEAPON TIER " + currentWeaponTier + " UNLOCKED!");
+        playAudioFile(audioFiles.weaponTierIncrease);
     } else {
-        score += 2500; showNotification("MAX TIER! +2500 SCORE");
+        score += 2500; showNotification("MAX TIER! +2500 SCORE"); playUpgradeSound();
+    }
+  } else if (type === 'WINGMAN_HEAL') {
+    const aliveWingmen = wingmen.filter(w=>!w.marked && !w.isCrashing);
+    if (aliveWingmen.length > 0) {
+      aliveWingmen.forEach(w => {
+        Object.keys(w.parts).forEach(k => { w.parts[k].hp = Math.min(w.parts[k].max, w.parts[k].hp + w.parts[k].max * 0.5); });
+      });
+      showNotification("WINGMAN REPAIRED!");
+      playAudioFile(audioFiles.wingmanRepaired);
+      updateWingmanHUD();
+    }
+  } else if (type === 'WINGMAN_UPGRADE') {
+    if (wingmanTier < 3) {
+      wingmanTier++;
+      showNotification("WINGMAN TIER " + wingmanTier + " UNLOCKED!");
+      playAudioFile(audioFiles.wingmanUpgraded);
+      updateWingmanHUD();
+    } else {
+      score += 1500; showNotification("WINGMAN MAX TIER! +1500 SCORE"); playUpgradeSound();
     }
   } else if (type === 'SCORE_COIN') {
     score += 500; playUpgradeSound();
@@ -2316,7 +3230,7 @@ function acceptCard() {
   if (pendingCard.effect === 'dodge') player.effects.dodge = true; if (pendingCard.effect === 'supernova') player.effects.supernova = true;
   if (pendingCard.effect === 'chain') player.effects.chain = true; if (pendingCard.effect === 'pushback') player.effects.pushback = true;
   
-  let rMult = pendingCard.rarity === 'mythic' ? 1.5 : (pendingCard.rarity === 'legendary' ? 1.4 : (pendingCard.rarity === 'epic' ? 1.3 : (pendingCard.rarity === 'rare' ? 1.2 : 1.1)));
+  let rMult = pendingCard.rarity === 'mythic' ? 2 : (pendingCard.rarity === 'legendary' ? 1.5 : (pendingCard.rarity === 'epic' ? 1.3 : (pendingCard.rarity === 'rare' ? 1.2 : 1.1)));
   if (currentElement === 'FIRE') player.damageMultiplier *= rMult;
   if (currentElement === 'WATER') player.fireRateMultiplier *= rMult;
   if (currentElement === 'AIR') player.speedMultiplier *= rMult;
@@ -2347,6 +3261,38 @@ function updateElementBar() {
 
 function spawnParticles(x, y, color, count) { for (let i = 0; i < count; i++) particles.push(new Particle(x, y, color)); }
 
+function notifyPartDestroyed(boss, part) {
+  const label = part.label;
+  const isEngine = label === 'ENGINE' || label === 'PROPELLER';
+  const isGun = ['GUN','BATTERY','TURRET','CANNON'].includes(label);
+  if (isEngine) {
+    const alive = boss.parts.filter(p => (p.label==='ENGINE'||p.label==='PROPELLER') && !p.isDead).length;
+    playAudioFile(alive === 0 ? audioFiles.enginesAllGone : audioFiles.oneEngineGone);
+  } else if (isGun) {
+    const alive = boss.parts.filter(p => ['GUN','BATTERY','TURRET','CANNON'].includes(p.label) && !p.isDead).length;
+    playAudioFile(alive === 0 ? audioFiles.allTurretsGone : audioFiles.oneTurretGone);
+  }
+}
+
+const BOSS_INTROS = {
+  3:  { name: "IRON HAWK FORTRESS",    sub: "Destroy the engine nacelles — cut off its power!" },
+  6:  { name: "STEEL CARRIER FORTRESS",sub: "Knock out the sponson engines before its batteries open fire!" },
+  9:  { name: "DOOM ZEPPELIN",         sub: "Target the propeller nacelles under the gondola — bring it DOWN!" },
+  11: { name: "EUGENBURG DOOM-ENTITY", sub: "Unknown class — annihilate the treads. All weapons free!" },
+};
+
+function showBossIntro(waveNum) {
+  const intro = BOSS_INTROS[waveNum];
+  if (!intro) return;
+  const overlay = document.getElementById('boss-intro-overlay');
+  document.getElementById('boss-intro-name').textContent = intro.name;
+  document.getElementById('boss-intro-sub').textContent = intro.sub;
+  overlay.style.display = 'flex';
+  setTimeout(() => { overlay.style.display = 'none'; }, 3000);
+  // Play boss intro audio 1 second later
+  setTimeout(() => { playAudioFile(audioFiles.bossIntro); }, 1000);
+}
+
 function showNotification(text) {
   const el = document.getElementById('notification'); el.innerText = text; el.style.opacity = 1;
   document.getElementById('notification').style.color = '#ffd700'; document.getElementById('notification').style.textShadow = '0 0 20px #ffaa00';
@@ -2355,7 +3301,7 @@ function showNotification(text) {
 
 function updateUI() {
   document.getElementById('score').innerText = score; 
-  document.getElementById('wave').innerText = wave > 10 ? 10 : wave; 
+  document.getElementById('wave').innerText = wave > 11 ? 11 : wave;
   document.getElementById('level').innerText = currentLevel;
   document.getElementById('weapon-tier-display').innerText = "WEAPON TIER: " + currentWeaponTier + (currentWeaponTier === 6 ? " (MAX)" : "");
   document.getElementById('wave-timer-fill').style.width = Math.max(0, 100 - (waveTimer / FRAMES_PER_WAVE * 100)) + '%';
@@ -2386,6 +3332,7 @@ function victoryScreen() {
   gameRunning = false; 
   if (bgmAudio) { bgmAudio.pause(); bgmAudio.currentTime = 0; bgmAudio = null; }
   if(bgmInterval) clearInterval(bgmInterval);
+  playAudioFile(audioFiles.missionAccomplished);
   document.getElementById('game-over').style.display = 'flex'; 
   document.getElementById('end-title').innerText = `VICTORY ACHIEVED`; document.getElementById('end-title').style.color = "#00ffaa";
   document.getElementById('end-desc').innerText = "THE GALAXY IS SAFE."; document.getElementById('end-btn').innerText = `RESTART GAME`; document.getElementById('final-score').innerText = `FINAL SCORE: ${score}`;
@@ -2436,30 +3383,41 @@ function animate(timestamp) {
       ctx.fillRect(0, 0, width, height);
   }
 
-  if (inIntermission) {
+if (inIntermission) {
       intermissionTimer++;
-      if (intermissionTimer === 30) { 
-          if (intermissionIsBoss) {
-              showNotification(wave === 11 ? "WARNING: UNKNOWN ENTITY DETECTED!" : (wave === 10 ? "⚠ FINAL FORTRESS INCOMING!" : "BOSS APPROACHING!"));
-              if(wave===11 || wave===10) { document.getElementById('notification').style.color = '#ff0000'; document.getElementById('notification').style.textShadow = '0 0 20px #ff0000'; }
-          } else {
+      // Vroegtijdige algemene waarschuwing (optioneel) op 60 frames
+      if (intermissionTimer === 60) { 
+          if (!intermissionIsBoss) {
               showNotification("WAVE " + wave);
+          } else {
+              showNotification("⚠ WARNING ⚠");
+              document.getElementById('notification').style.color = '#ff0000'; 
+              document.getElementById('notification').style.textShadow = '0 0 20px #ff0000';
           }
       }
-      if (intermissionTimer >= 90) { 
+
+      // Timer verdubbeld naar 180! Hier spawnt de boss, muziek start én de intro speelt tegelijk
+      if (intermissionTimer >= 180) { 
           inIntermission = false; waveTimer = 0; cardDroppedThisWave = false; aceSpawnedThisWave = false;
+          
           if (intermissionIsBoss) {
               wave++; bossActive = true; bossSupportsUsed = 0;
+              
+              // Toon NU de Boss intro samen met de muziek
+              const nextWaveNum = wave;
+              showBossIntro(nextWaveNum);
+              
               if (wave === 3) startBGM('boss1'); 
               else if (wave === 6) startBGM('boss2'); 
               else if (wave === 9) startBGM('boss3'); 
-              else if (wave === 10) startBGM('boss4');
               else if (wave === 11) startBGM('secret');
+              
               if (wave === 11) enemies.push(new SecretBoss()); else enemies.push(new Boss(wave)); 
           }
       }
       updateUI();
-  } else if (!bossActive && wave <= 11) {
+
+  } else if (!bossActive && wave <= 10) {
     if (waveTimer < FRAMES_PER_WAVE) {
         waveTimer++;
         let isDamaged = false; for(let k in player.parts){ if(player.parts[k].hp < player.parts[k].max) isDamaged = true; }
@@ -2470,7 +3428,8 @@ function animate(timestamp) {
 
     if (waveTimer >= FRAMES_PER_WAVE && !inIntermission) {
         waveTimer = 0; let nextWave = wave + 1;
-        if (nextWave === 3 || nextWave === 6 || nextWave === 9 || nextWave === 10 || nextWave === 11) { 
+        // Secret boss triggert nu op wave 11
+        if (nextWave === 3 || nextWave === 6 || nextWave === 9 || nextWave === 11) { 
             startIntermission(true); 
         } else { 
             wave++; startIntermission(false); 
@@ -2481,10 +3440,11 @@ function animate(timestamp) {
 
   spawnLogic(); updateSupportWaves(); player.update();
   bullets.forEach(b => b.update()); enemies.forEach(e => e.update()); allies.forEach(a => a.update()); drops.forEach(d => d.update()); particles.forEach(p => p.update()); wrecks.forEach(w => w.update());
-  escortShips.forEach(s => s.update());
+  wingmen.forEach(w => w.update());
   checkCollisions();
 
   player.draw();
+  for (let i = wingmen.length - 1; i >= 0; i--) { if (wingmen[i].marked) { wingmen.splice(i,1); updateWingmanHUD(); continue; } wingmen[i].draw(); }
   for (let i = bullets.length - 1; i >= 0; i--) { if (bullets[i].marked) { bullets.splice(i, 1); continue; } bullets[i].draw(); }
   for (let i = enemies.length - 1; i >= 0; i--) { enemies[i].draw(); }
   for (let i = allies.length - 1; i >= 0; i--) { if (allies[i].marked) { allies.splice(i, 1); continue; } allies[i].draw(); }
