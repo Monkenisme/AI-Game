@@ -439,29 +439,29 @@ this.speed = (baseSpeed + (this.effects.speed || 0)) * this.speedMultiplier;
     this.effects.incendiary = false; this.effects.homing = false; this.isParallel = false; this.bulletSpeedMult = 1.0; let isBossHunter = false;
 
     if (this.weaponType === 'sniper') {
-        wDamage = 200; wFireRate = 38; wShotCount = 1; wSpread = 0; 
-        if(currentWeaponTier >= 1) { this.effects.pierce = true; }
-        if(currentWeaponTier >= 2) { wFireRate = 36; }
+        wDamage = 200; wFireRate = 70; wShotCount = 1; wSpread = 0; 
+        if(currentWeaponTier >= 1) { this.effects.pierce = true; wDamage = 150; wFireRate = 100; }
+        if(currentWeaponTier >= 2) { wFireRate = 90; }
         if(currentWeaponTier >= 3) { this.effects.plasmaArea = true; }
-        if(currentWeaponTier >= 4) { wFireRate = 28; }
-        if(currentWeaponTier >= 5) { this.bulletSpeedMult = 2.5; }
-        if(currentWeaponTier >= 6) { this.effects.explosive = true; wDamage *= 1.5; } // was 2.0x, nerfed
+        if(currentWeaponTier >= 4) { wFireRate = 80; }
+        if(currentWeaponTier >= 5) { this.bulletSpeedMult = 1.2; }
+        if(currentWeaponTier >= 6) { this.effects.explosive = true; wDamage *= 0.5; } // was 2.0x, nerfed
     } else if (this.weaponType === 'machinegun') {
-        wDamage = 30; wFireRate = 4; wShotCount = 1; wSpread = 0;
-        if(currentWeaponTier >= 1) { wShotCount = 2; this.isParallel = true; wDamage = 25; }
-        if(currentWeaponTier >= 2) { wFireRate = 3.5; }
-        if(currentWeaponTier >= 3) { wShotCount = 3; this.isParallel = false; wSpread = 0.25; wDamage = 20; }
-        if(currentWeaponTier >= 4) { wShotCount = 4; wSpread = 0.4; wDamage = 20; }
-        if(currentWeaponTier >= 5) { this.effects.incendiary = true; wFireRate = 3; }
-        if(currentWeaponTier >= 6) { wShotCount = 6; wSpread = 0.8; wFireRate = 3; wDamage = 15; } 
+        wDamage = 30; wFireRate = 15; wShotCount = 2; this.isParallel = true; wSpread = 0;
+        if(currentWeaponTier >= 1) { wShotCount = 3; this.isParallel = true; wDamage = 25; }
+        if(currentWeaponTier >= 2) { wFireRate = 7; }
+        if(currentWeaponTier >= 3) { wShotCount = 4; this.isParallel = false; wSpread = 0.8; wDamage = 20; }
+        if(currentWeaponTier >= 4) { wShotCount = 5; wSpread = 0.7; wDamage = 18; }
+        if(currentWeaponTier >= 5) { this.effects.incendiary = true; wFireRate = 6; }
+        if(currentWeaponTier >= 6) { wShotCount = 6; wSpread = 0.7; wFireRate = 5.5; wDamage = 18; } 
     } else if (this.weaponType === 'shotgun') {
-        wDamage = 60; wFireRate = 35; wShotCount = 4; wSpread = 0.6; 
-        if(currentWeaponTier >= 1) { wShotCount = 6; }
-        if(currentWeaponTier >= 2) { wSpread = 1.0; }
-        if(currentWeaponTier >= 3) { wFireRate = 25; }
-        if(currentWeaponTier >= 4) { this.effects.explosive = true; wDamage = 50; }
-        if(currentWeaponTier >= 5) { wShotCount = 8; }
-        if(currentWeaponTier >= 6) { wShotCount = 12; wSpread = 1.5; wDamage = 70; }
+        wDamage = 60; wFireRate = 60; wShotCount = 4; wSpread = 1; 
+        if(currentWeaponTier >= 1) { wShotCount = 5; }
+        if(currentWeaponTier >= 2) { wSpread = 0.9; }
+        if(currentWeaponTier >= 3) { wFireRate = 50; }
+        if(currentWeaponTier >= 4) { this.effects.explosive = true; wDamage = 40; }
+        if(currentWeaponTier >= 5) { wShotCount = 6; }
+        if(currentWeaponTier >= 6) { wShotCount = 8; wSpread = 0.8; wDamage = 50; }
     }
 
     if (this.parts.gun.hp <= 0) { this.backupGun = true; wDamage *= 0.55; wFireRate *= 2.2; } else this.backupGun = false;
@@ -521,8 +521,8 @@ this.speed = (baseSpeed + (this.effects.speed || 0)) * this.speedMultiplier;
     }
 
     if (this.weaponType === 'sniper' && !this.effects.bigExplosion) {
-        bullets.push(new Bullet(this.x - 20, this.y - 20, -8, -30, color, false, this.element, false, this.damage * 0.10));
-        bullets.push(new Bullet(this.x + 20, this.y - 20, 8, -30, color, false, this.element, false, this.damage * 0.10));
+        bullets.push(new Bullet(this.x - 0, this.y - 20, -8, -30, color, false, this.element, false, this.damage * 0.50));
+        bullets.push(new Bullet(this.x + 0, this.y - 20, 8, -30, color, false, this.element, false, this.damage * 0.50));
     }
   }
 
@@ -2914,8 +2914,8 @@ function checkCollisions() {
         if (player.effects.pushback && !e.isBoss) { e.y -= 1; }
 
         if (b.explosive || (b.special && b.special.plasmaArea) || (b.special && b.special.bigExplosion)) {
-            let radius = (b.special && b.special.bigExplosion) ? 220 : 115;
-            let dmgMult = (b.special && b.special.bigExplosion) ? 2.5 : 1.7;
+            let radius = (b.special && b.special.bigExplosion) ? 150 : 100;
+            let dmgMult = (b.special && b.special.bigExplosion) ? 1.5 : 1.2;
             spawnParticles(b.x, b.y, b.color, (b.special && b.special.bigExplosion) ? 80 : 48);
             
             enemies.forEach(other => {
